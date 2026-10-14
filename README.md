@@ -211,7 +211,7 @@ More detail: [docs/PRIVACY_AND_DATA.md](docs/PRIVACY_AND_DATA.md).
 | Replies aren't read aloud | No voice for that language on the device — install one, or keep using text. |
 | Tests time out starting workers | Slow synced folder (OneDrive); move the project or re-run. |
 | Gemini: "experiencing high demand" / slow first reply | Google-side load on the key's tier; the server retries and falls back automatically. Try later, a paid tier, or `AI_PROVIDER=anthropic`. |
-| Prisma refuses a command "invoked by Claude Code" | Prisma blocks destructive commands run by AI agents unless you consent. Tests use the non-destructive `migrate deploy`; run resets yourself if needed. |
+| Prisma refuses a command "invoked by an AI agent" | Prisma blocks destructive commands run by AI coding agents unless you consent. Tests use the non-destructive `migrate deploy`; run resets yourself if needed. |
 | Public link shows "Cloudflare Tunnel error 1033" | The network blocks Cloudflare's tunnel port 7844; use the Pinggy command above (port 443). |
 | Public link stopped working | Free Pinggy links expire after 60 minutes, or the PC/terminal stopped; start the tunnel again for a new link. |
 | `EADDRINUSE :4000` | Another process uses the port; change `PORT` (and `ANBU_API_URL` for the client proxy). |
