@@ -249,7 +249,12 @@
     "listeningDeeply": "Listening deeply",
     "suggest1": "I need 10 quiet minutes",
     "suggest2": "How do I express this gently?",
-    "suggest3": "Just be here with me"
+    "suggest3": "Just be here with me",
+    "greeting": "Hi {{name}}, I'm here with you. How are you feeling today?",
+    "pauseLive": "Pause conversation",
+    "startHint": "Tap once to begin. After that, just talk. Anbu listens again after every reply.",
+    "liveHint": "Just talk naturally. Tap the button whenever you want to pause.",
+    "livePaused": "It went quiet, so Anbu stopped listening for now. Continue whenever you are ready."
   },
   "voice": {
     "noApi": "Speaking to Anbu isn't supported in this browser. You can type instead - Chrome and Edge support voice input.",

@@ -97,13 +97,20 @@ export default function ConversationPage() {
         if (speakThisReply.current) player.pushStream(delta);
       },
       onReplyEnd: (message, outcome) => {
-        if (speakThisReply.current) {
+        const spoke = speakThisReply.current;
+        if (spoke) {
           if (outcome === 'stopped') player.stop();
           else player.endStream();
         } else if (outcome === 'done') {
           setAnnouncement(message.content);
         }
         speakThisReply.current = false;
+        if (!liveRef.current || outcome === 'stopped') return;
+        // In a live conversation, listen again once she has heard the reply.
+        // While it is still being spoken the check below waits, and the
+        // speech-finished effect takes over.
+        if (outcome === 'error') pauseLive();
+        else scheduleListen(spoke ? 800 : 500);
       },
     };
   });
@@ -143,7 +150,7 @@ export default function ConversationPage() {
   const submit = (text: string, source: 'voice' | 'text') => {
     if (!text.trim() || convo.pending) return;
     lastInputWasVoice.current = source === 'voice';
-    void convo.send(text, { source, replacesLast: correcting });
+    void convo.send(text, { source, replacesLast: correcting, channel: source === 'voice' && view === 'voice' ? 'voice' : 'text' });
     setDraft('');
     setDraftFromVoice(false);
     setCorrecting(false);
@@ -152,7 +159,29 @@ export default function ConversationPage() {
   const submitRef = useRef(submit);
   submitRef.current = submit;
 
+  // --- Live conversation: after one tap, listen → reply → listen again, like a call.
+  const [live, setLive] = useState(false);
+  const liveRef = useRef(false);
+  const pendingRef = useRef(false);
+  pendingRef.current = convo.pending;
+  const speakingRef = useRef(false);
+  speakingRef.current = speaking;
+  const silentTurns = useRef(0);
+  const listenTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const [greeting, setGreeting] = useState<string | null>(null);
+  const [livePausedNote, setLivePausedNote] = useState(false);
+  /** Quiet turns in a row (no speech heard) before the live conversation pauses itself. */
+  const MAX_SILENT_TURNS = 3;
+
+  const setLiveMode = (on: boolean) => {
+    liveRef.current = on;
+    setLive(on);
+    if (!on) clearTimeout(listenTimer.current);
+  };
+
   const startListening = () => {
+    clearTimeout(listenTimer.current);
+    if (recognizer.current) return;
     player.stop();
     if (convo.pending) convo.stop();
     setVoiceError(null);
@@ -160,7 +189,9 @@ export default function ConversationPage() {
     const rec = startRecognition(lang.speechTag, {
       onInterim: setInterim,
       onFinal: (text) => {
+        silentTurns.current = 0;
         if (prefs.voiceInputReview) {
+          setLiveMode(false);
           setView('text');
           setDraft(text);
           setDraftFromVoice(true);
@@ -170,6 +201,18 @@ export default function ConversationPage() {
         }
       },
       onError: (error) => {
+        if (error === 'no-speech' && liveRef.current) {
+          // She may just be thinking. Keep listening quietly for a while.
+          silentTurns.current += 1;
+          if (silentTurns.current < MAX_SILENT_TURNS) {
+            scheduleListen(200);
+            return;
+          }
+          setLiveMode(false);
+          setLivePausedNote(true);
+          return;
+        }
+        if (liveRef.current) setLiveMode(false);
         setVoiceError(error);
         if (error === 'language-not-supported') recheckSupport();
       },
@@ -181,12 +224,78 @@ export default function ConversationPage() {
     if (rec) {
       recognizer.current = rec;
       setListening(true);
+    } else if (liveRef.current) {
+      setLiveMode(false);
     }
   };
   const stopListening = () => recognizer.current?.stop();
+  const startListeningRef = useRef(startListening);
+  startListeningRef.current = startListening;
+
+  function scheduleListen(delayMs: number) {
+    clearTimeout(listenTimer.current);
+    listenTimer.current = setTimeout(() => {
+      if (!liveRef.current || pendingRef.current || speakingRef.current) return;
+      // The previous recognizer may still be closing; try again shortly.
+      if (recognizer.current) scheduleListen(150);
+      else startListeningRef.current();
+    }, delayMs);
+  }
+
+  function pauseLive() {
+    setLiveMode(false);
+    recognizer.current?.abort();
+  }
+
+  /** Starts a free-flowing conversation: a short spoken hello on the first turn, then listening. */
+  const beginLive = () => {
+    setLivePausedNote(false);
+    setVoiceError(null);
+    silentTurns.current = 0;
+    setLiveMode(true);
+    const greet = convo.messages.length === 0 && !greeting && prefs.voiceOutputEnabled && synthesisOk;
+    if (greet) {
+      const hello = t('chat.greeting', { name: user.name });
+      setGreeting(hello);
+      // Listening starts when the greeting finishes (speech-finished effect below).
+      player.speak(hello, speakOptions());
+    } else {
+      startListening();
+    }
+  };
+
+  // When Anbu finishes speaking during a live conversation, it's her turn again.
+  const wasSpeaking = useRef(false);
+  useEffect(() => {
+    if (wasSpeaking.current && !speaking && liveRef.current && !pendingRef.current) scheduleListen(350);
+    wasSpeaking.current = speaking;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [speaking]);
+
+  // Opening the voice screen from a tap (e.g. "Talk with Anbu") starts talking right away.
+  // Browsers only allow speech after the person has interacted with the page.
+  const autoStarted = useRef(false);
+  useEffect(() => {
+    if (autoStarted.current || view !== 'voice' || !support || !recognitionOk || !online) return;
+    autoStarted.current = true;
+    if (convo.messages.length === 0 && navigator.userActivation?.hasBeenActive) beginLive();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [support, recognitionOk, view]);
+
+  // Don't keep the microphone open in the background.
+  useEffect(() => {
+    const onHide = () => {
+      if (document.hidden && liveRef.current) pauseLive();
+    };
+    document.addEventListener('visibilitychange', onHide);
+    return () => document.removeEventListener('visibilitychange', onHide);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(
     () => () => {
+      clearTimeout(listenTimer.current);
+      liveRef.current = false;
       playerRef.current?.stop();
       recognizer.current?.abort();
     },
@@ -201,6 +310,8 @@ export default function ConversationPage() {
     void i18n.changeLanguage(code);
     updateUser({ preferredLanguage: code }).catch(() => undefined);
     setLanguageNotice(t('lang.changed', { lang: languageInfo(code).nativeName }));
+    // Keep a live conversation going, now in the new language.
+    if (liveRef.current) scheduleListen(600);
   };
   useEffect(() => {
     if (!languageNotice) return;
@@ -276,6 +387,18 @@ export default function ConversationPage() {
       )}
       {languageNotice && <Banner tone="info">{languageNotice}</Banner>}
       {voiceBanner && <Banner tone="info">{voiceBanner}</Banner>}
+      {livePausedNote && view === 'voice' && !live && (
+        <Banner
+          tone="info"
+          action={
+            <button type="button" className="font-semibold underline" onClick={beginLive}>
+              {t('common.continue')}
+            </button>
+          }
+        >
+          {t('chat.livePaused')}
+        </Banner>
+      )}
       {voiceError && (
         <Banner
           tone={voiceError === 'no-speech' ? 'info' : 'error'}
@@ -305,13 +428,17 @@ export default function ConversationPage() {
   // ---------------------------------------------------------------- Voice view
   const voiceView = () => {
     const reply = lastReply?.content ? replyParts(lastReply.content) : null;
+    // One tap starts the conversation; after that it flows on its own until she pauses it.
+    // While Anbu speaks, tapping hands the turn back to her.
     const mainAction = () => {
-      if (state === 'listening') stopListening();
-      else if (state === 'speaking') {
+      if (state === 'speaking') {
         player.stop();
-        startListening();
-      } else if (state === 'idle') startListening();
+        if (live) startListening();
+      } else if (live) pauseLive();
+      else beginLive();
     };
+    const buttonKey = state === 'speaking' ? 'speaking' : live ? 'listening' : 'idle';
+    const buttonLabel = state === 'speaking' ? t('chat.stopSpeaking') : live ? t('chat.pauseLive') : t('chat.micStart');
     return (
       <div className="flex flex-col pb-8">
         <div className="flex items-center justify-between pt-2 pb-3">
@@ -391,6 +518,8 @@ export default function ConversationPage() {
               </>
             ) : state === 'thinking' ? (
               <p className="font-display text-headline-md leading-relaxed text-on-surface italic">{t('chat.thoughtThinking')}</p>
+            ) : greeting ? (
+              <p className="font-display text-headline-md leading-relaxed text-on-surface italic">“{greeting}”</p>
             ) : (
               <>
                 <p className="mb-2.5 font-display text-headline-md leading-relaxed text-on-surface italic">{t('chat.thoughtIdleQuote')}</p>
@@ -434,7 +563,7 @@ export default function ConversationPage() {
             <button
               type="button"
               onClick={() => {
-                recognizer.current?.abort();
+                pauseLive();
                 setView('text');
               }}
               className="flex h-12 items-center gap-2 rounded-full bg-surface-container px-4 text-label-md text-on-surface shadow-sm transition-all hover:bg-surface-container-high active:scale-95"
@@ -449,14 +578,12 @@ export default function ConversationPage() {
               <button
                 type="button"
                 onClick={mainAction}
-                disabled={state === 'thinking' || !recognitionOk || !online}
-                aria-label={
-                  state === 'listening' ? t('chat.micStop') : state === 'speaking' ? t('chat.stopSpeaking') : t('chat.micStart')
-                }
+                disabled={state !== 'speaking' && !live && (state === 'thinking' || !recognitionOk || !online)}
+                aria-label={buttonLabel}
                 className="relative z-10 flex h-[76px] w-[76px] flex-col items-center justify-center rounded-full bg-primary text-on-primary shadow-lg transition-all hover:bg-on-primary-fixed-variant active:scale-95 disabled:opacity-60"
               >
-                <Icon name={MAIN_BUTTON_ICON[state]} size={32} />
-                <span className="-mt-0.5 text-[0.6rem] font-semibold tracking-wider text-on-primary/90 uppercase">{t(`chat.button.${state}`)}</span>
+                <Icon name={MAIN_BUTTON_ICON[buttonKey]} size={32} />
+                <span className="-mt-0.5 text-[0.6rem] font-semibold tracking-wider text-on-primary/90 uppercase">{t(`chat.button.${buttonKey}`)}</span>
               </button>
             </div>
             <button
@@ -468,6 +595,9 @@ export default function ConversationPage() {
               <span>{t('chat.warmTone')}</span>
             </button>
           </div>
+          {recognitionOk && (
+            <p className="mt-4 max-w-xs text-center text-label-md text-on-surface-variant">{live ? t('chat.liveHint') : t('chat.startHint')}</p>
+          )}
           <p className="mt-5 flex items-center justify-center gap-1.5 text-center text-label-sm text-on-surface-variant">
             <Icon name="verified_user" size={14} className="shrink-0 text-tertiary" />
             {privacyLine}
