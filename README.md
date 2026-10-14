@@ -140,7 +140,30 @@ The app must be served over **https** (or `localhost`).
 
 The service worker caches only the app shell. Conversations and API responses are **never** cached.
 
-To try it on a phone during development, run `npm run dev`, then expose port 5173 over https with a tunnel you trust, or deploy a test build.
+### Sharing a temporary public link (any Wi-Fi or mobile data)
+
+To let someone open the app from another network without deploying it, run a production instance on this PC and expose it through an HTTPS tunnel. HTTPS also lets phones use the microphone.
+
+```powershell
+# 1. Build the latest client
+npm run build -w client
+
+# 2. Run a production instance on its own port (dev servers can keep running).
+#    Settings passed on the command line override server/.env.
+cd server
+$env:NODE_ENV="production"; $env:PORT="4200"; $env:TRUST_PROXY="1"; $env:COOKIE_SECURE="true"
+npx tsx src/index.ts
+```
+
+Then, in a second terminal, open a tunnel to port 4200:
+
+| Tunnel | Command | Notes |
+|---|---|---|
+| **Pinggy** (works on networks that only allow HTTPS/port 443) | `ssh -p 443 -R0:localhost:4200 free.pinggy.io` (press Enter if asked for a password, or add `-i <any ssh key>`) | No account. Prints two `https://…` links. Free links expire after **60 minutes** and include your public IP in the address. |
+| **Cloudflare quick tunnel** | `cloudflared tunnel --protocol http2 --url http://localhost:4200` | No account. Needs outbound port **7844**; some campus/office networks block it (you'll see `connection refused` on 7844). |
+| **ngrok** | `ngrok http 4200` | Free account and auth token required; free plan includes one fixed domain. |
+
+The link works only while this PC is on and both terminals keep running. Anyone with the link can create an account and chat, which uses your AI provider key (rate limits apply). For a permanent link, deploy the server (with a hosted MySQL) to a host such as Render or Railway, following the production checklist above.
 
 ## 7. Voice and languages — what to expect
 
@@ -189,6 +212,8 @@ More detail: [docs/PRIVACY_AND_DATA.md](docs/PRIVACY_AND_DATA.md).
 | Tests time out starting workers | Slow synced folder (OneDrive); move the project or re-run. |
 | Gemini: "experiencing high demand" / slow first reply | Google-side load on the key's tier; the server retries and falls back automatically. Try later, a paid tier, or `AI_PROVIDER=anthropic`. |
 | Prisma refuses a command "invoked by Claude Code" | Prisma blocks destructive commands run by AI agents unless you consent. Tests use the non-destructive `migrate deploy`; run resets yourself if needed. |
+| Public link shows "Cloudflare Tunnel error 1033" | The network blocks Cloudflare's tunnel port 7844; use the Pinggy command above (port 443). |
+| Public link stopped working | Free Pinggy links expire after 60 minutes, or the PC/terminal stopped; start the tunnel again for a new link. |
 | `EADDRINUSE :4000` | Another process uses the port; change `PORT` (and `ANBU_API_URL` for the client proxy). |
 
 ## 11. Project structure
