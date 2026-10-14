@@ -1,0 +1,167 @@
+// Anbu data model (MySQL).
+//
+// Privacy rules enforced in code (see src/persistence/memoryGate.ts):
+//   - Conversation / Message rows are written ONLY when memoryMode = PERSONAL
+//     and UserPreferences.historyEnabled = true.
+//   - Memory rows are written ONLY when memoryMode = PERSONAL.
+//   - Every query on user-owned data is scoped by userId.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum MemoryMode {
+  NONE
+  SESSION
+  PERSONAL
+}
+
+enum InteractionMode {
+  VOICE
+  TEXT
+  BOTH
+}
+
+enum ResponseStyle {
+  LISTEN
+  SOLUTIONS
+  BALANCED
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+}
+
+enum MemoryCategory {
+  PREFERENCE
+  PEOPLE
+  ROUTINE
+  WELLBEING
+  GOAL
+  OTHER
+}
+
+// STATED: something the user said in her own words.
+// INTERPRETATION: Anbu's understanding, confirmed for saving but still unverified.
+enum MemoryKind {
+  STATED
+  INTERPRETATION
+}
+
+model User {
+  id                    String          @id @default(cuid())
+  name                  String          @db.VarChar(80)
+  email                 String          @unique @db.VarChar(254)
+  passwordHash          String          @db.VarChar(100)
+  preferredLanguage     String          @default("en") @db.VarChar(8)
+  interactionMode       InteractionMode @default(BOTH)
+  memoryMode            MemoryMode      @default(SESSION)
+  onboardingCompletedAt DateTime?
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+
+  preferences         UserPreferences?
+  conversations       Conversation[]
+  memories            Memory[]
+  refreshTokens       RefreshToken[]
+  passwordResetTokens PasswordResetToken[]
+}
+
+model UserPreferences {
+  userId              String        @id
+  responseStyle       ResponseStyle @default(BALANCED)
+  // Conversation transcripts are kept only if this is true AND memoryMode = PERSONAL.
+  historyEnabled      Boolean       @default(false)
+  codeMixing          Boolean       @default(true)
+  voiceOutputEnabled  Boolean       @default(true)
+  voiceRate           Float         @default(1.0)
+  voiceInputReview    Boolean       @default(false)
+  captionsEnabled     Boolean       @default(true)
+  reducedMotion       Boolean       @default(false)
+  textSize            String        @default("md") @db.VarChar(4)
+  highContrast        Boolean       @default(false)
+  dailyPromptEnabled  Boolean       @default(true)
+  analyticsConsent    Boolean       @default(false)
+  updatedAt           DateTime      @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Conversation {
+  id        String    @id @default(cuid())
+  userId    String
+  title     String?   @db.VarChar(120)
+  language  String    @db.VarChar(8)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@index([userId, updatedAt])
+}
+
+model Message {
+  id             String      @id @default(cuid())
+  conversationId String
+  role           MessageRole
+  content        String      @db.Text
+  language       String      @db.VarChar(8)
+  createdAt      DateTime    @default(now()) @db.DateTime(3)
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+}
+
+model Memory {
+  id        String         @id @default(cuid())
+  userId    String
+  content   String         @db.VarChar(500)
+  category  MemoryCategory @default(OTHER)
+  kind      MemoryKind     @default(STATED)
+  sensitive Boolean        @default(false)
+  enabled   Boolean        @default(true)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, enabled])
+}
+
+// Opaque refresh tokens; only a SHA-256 hash is stored. Rotated on every use.
+// A replayed (already rotated) token revokes its whole family.
+model RefreshToken {
+  id          String    @id @default(cuid())
+  userId      String
+  familyId    String    @db.VarChar(36)
+  tokenHash   String    @unique @db.Char(64)
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique @db.Char(64)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
