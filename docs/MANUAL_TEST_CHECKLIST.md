@@ -32,6 +32,9 @@ Fill one row per device/browser. For each language, open **Settings → Voice** 
 - [ ] Tap **பேசுவதை நிறுத்து** mid-speech: speech stops immediately.
 - [ ] Tap the main button while Anbu is speaking: speech stops and listening starts (interrupting works).
 - [ ] Keep talking for several turns **without touching the screen**: after every spoken reply, listening starts again by itself.
+- [ ] Replies are spoken in a natural, human-sounding voice in Tamil (not a robotic system voice), starting within about 3 seconds of the text.
+- [ ] Pause for a second mid-sentence while speaking: Anbu waits for you to finish instead of replying to half a sentence.
+- [ ] Switch Wi-Fi off and on during a reply: the conversation retries once by itself, or pauses with a clear message.
 - [ ] Tap **உரையாடலை இடைநிறுத்து** (pause): listening stops and nothing restarts until tapped again.
 - [ ] Stay silent for about 20 seconds: listening pauses itself with a note and a **Continue** button.
 - [ ] Switch to another tab or lock the phone mid-conversation: the microphone turns off.

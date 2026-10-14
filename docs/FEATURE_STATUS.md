@@ -37,7 +37,9 @@ Last updated: 2026-10-14.
 - Language switch mid-conversation without restarting.
 - Voice input via the Web Speech API with live captions, permission/no-speech/network error messages, and "correct what I said" which replaces the last exchange.
 - Live voice conversation: one tap starts it, then Anbu greets her and the turns flow on their own (listen → reply spoken aloud → listen again) with no more tapping. Replies in a live conversation are kept short and spoken-style. Tapping while Anbu speaks hands the turn back to her; the same button pauses. It pauses itself after about 20 seconds of silence, when the tab is hidden, or on an error, and says so.
-- Voice output sentence by sentence while the reply streams; stop and replay.
+- Natural, human-sounding voice for replies in all six languages (Gemini text-to-speech, streamed so playback starts as audio arrives; measured 1.1–3 s to first sound). Falls back to the device voice when the natural voice is busy or the connection is very slow, and prefers the device's most natural-sounding voice. Stop and replay.
+- Patient listening in a live conversation: short pauses don't cut her off; her turn ends after about 1.5 s of silence, and words still being recognised are kept.
+- A dropped connection or busy moment mid-conversation is retried once automatically before the conversation pauses; going offline pauses it.
 - Animated companion: breathing (idle), ripples (listening), slow pulse (thinking), movement during speech that also pulses on word boundaries where the browser reports them. Static under reduced motion.
 - Optional reflection after ending: summary, small next steps to choose from, and memory suggestions she selects explicitly.
 
@@ -63,7 +65,8 @@ Last updated: 2026-10-14.
 | Speaking animation sync | Browsers don't expose speech-synthesis audio levels. | Animation follows playback state and word-boundary events when the voice provides them. |
 | Reply language | Enforced by strong prompt instructions, not a hard guarantee. | Tested prompt rules; consider a script-detection check later. |
 | Reply latency with Gemini | Depends on Google's load for the key's tier. With Flash-Lite and minimal thinking, first text took 1.2–1.7 s in testing (it was 13–18 s with Gemini 3.8 Flash). | Flash-Lite trades some depth for speed; set `GEMINI_MODEL` to a larger model if replies feel too simple. |
-| Live voice turn-taking | Listening restarts only after Anbu finishes speaking, so she cannot cut in by voice, only by tapping. Chrome decides when she has finished a sentence; long pauses mid-thought may send early. | Browser speech recognition has no echo cancellation for the app's own speech, so listening during speech would hear Anbu. |
+| Natural voice quota | Free-tier keys allow about 3 speech requests per minute per model (three models are rotated). Past that, replies use the device voice, or text only if the device has no voice for the language. | A paid Gemini tier removes the limit. |
+| Live voice turn-taking | Listening restarts only after Anbu finishes speaking, so she cannot cut in by voice, only by tapping. On Android, Chrome decides when she has finished a sentence, so long pauses mid-thought may send early. | Browser speech recognition has no echo cancellation for the app's own speech, so listening during speech would hear Anbu. |
 | Stitch design fidelity | A few elements differ on purpose: honest privacy wording, deeper terracotta on text buttons for contrast, no "bookmark" or audio duration on replies (the app has no data for them). | Documented in the README "Design source" section. |
 | Crisis screening | Keyword/pattern heuristic; can miss indirect expressions and occasionally over-trigger. | The companion prompt carries safety rules as a backstop; phrase lists need review by native speakers and clinicians. |
 | Translations and static safety messages | Drafted by the developer. | **Must be reviewed by native speakers** before public release. |

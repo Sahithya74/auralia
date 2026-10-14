@@ -42,10 +42,11 @@ This describes what Anbu stores, where, for how long, and what is shared with ot
 | Recipient | What | When |
 |---|---|---|
 | AI provider (Google Gemini or Anthropic, per `AI_PROVIDER`) | system instructions, her display name, mood check-in, enabled memories (Personal mode), recent conversation turns | every reply and reflection |
+| Google Gemini text-to-speech (when `NATURAL_VOICE` is on) | the text of Anbu's reply, to turn it into speech. Nothing she said is sent, and nothing is stored by the app | each reply that is spoken aloud |
 | Browser speech service (Chrome/Edge vendors) | microphone audio | only while she is using voice input |
 | Email provider (SMTP) | her email address and a reset link | only for password resets |
 
-Configure the AI provider account for the shortest retention available (e.g. zero-data-retention arrangements where your organisation qualifies) and review its data policy. Text-to-speech uses voices installed on her device; some browsers may use online voices.
+Configure the AI provider account for the shortest retention available (e.g. zero-data-retention arrangements where your organisation qualifies) and review its data policy. Spoken replies use Gemini's natural voice when available, otherwise voices installed on her device (some browsers use online voices).
 
 ## Account deletion and export
 
