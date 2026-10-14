@@ -20,8 +20,9 @@ import { isSupported, languageInfo } from '../lib/i18n/languages';
 import { reflectionHandoff } from '../lib/reflectionHandoff';
 import { KEYS, local } from '../lib/storage';
 import { detectVoiceSupport, type VoiceSupport } from '../lib/voice/capabilities';
-import { startRecognition, type RecognitionError, type Recognizer } from '../lib/voice/recognition';
-import { SpeechPlayer } from '../lib/voice/speechPlayer';
+import { isNaturalVoiceSupported, isSlowConnection, unlockAudio } from '../lib/voice/naturalVoice';
+import { canListenPatiently, startRecognition, type RecognitionError, type Recognizer } from '../lib/voice/recognition';
+import { SpeechPlayer, type SpeakOptions } from '../lib/voice/speechPlayer';
 
 const MOODS: Mood[] = ['carrying', 'tired', 'peaceful', 'need_to_talk'];
 const STATES: OrbState[] = ['idle', 'listening', 'thinking', 'speaking'];
@@ -32,6 +33,9 @@ const STATE_DOT: Record<OrbState, string> = {
   thinking: 'bg-secondary',
   speaking: 'bg-tertiary',
 };
+/** Live conversation: a pause this long ends her turn; this much silence counts as not speaking. */
+const PATIENT_SILENCE_MS = 1500;
+const NO_SPEECH_MS = 8000;
 const MAIN_BUTTON_ICON = { idle: 'mic', listening: 'pause', thinking: 'hourglass_top', speaking: 'stop' } as const;
 
 export default function ConversationPage() {
@@ -69,28 +73,42 @@ export default function ConversationPage() {
   const recognitionOk = support?.recognition === 'available';
   const synthesisOk = support?.synthesis === 'available';
 
-  // --- Speech output
+  // --- Speech output: Anbu's natural voice from the server when available,
+  // otherwise the device's own voice for the language.
+  const naturalOk = Boolean(health?.voice?.natural) && isNaturalVoiceSupported();
+  const canSpeak = prefs.voiceOutputEnabled && (naturalOk || synthesisOk);
   const [speaking, setSpeaking] = useState(false);
+  const [preparingVoice, setPreparingVoice] = useState(false);
   const [pulse, setPulse] = useState(0);
   const playerRef = useRef<SpeechPlayer | null>(null);
-  playerRef.current ??= new SpeechPlayer({ onSpeakingChange: setSpeaking, onBoundary: () => setPulse((p) => p + 1) });
+  playerRef.current ??= new SpeechPlayer({
+    onSpeakingChange: setSpeaking,
+    onPreparingChange: setPreparingVoice,
+    onBoundary: () => setPulse((p) => p + 1),
+  });
   const player = playerRef.current;
-  const speakOptions = useCallback(
-    () => ({ lang: lang.speechTag, rate: prefs.voiceRate, voice: support?.voice ?? null }),
-    [lang.speechTag, prefs.voiceRate, support],
-  );
+  const speakOptions = useCallback((): SpeakOptions => {
+    // On a very slow connection the device voice starts sooner, when it has one.
+    const natural = naturalOk && !(synthesisOk && isSlowConnection());
+    return {
+      lang: lang.speechTag,
+      rate: prefs.voiceRate,
+      voice: support?.voice ?? null,
+      natural: natural ? { language, deviceFallback: synthesisOk } : undefined,
+    };
+  }, [lang.speechTag, prefs.voiceRate, support, naturalOk, synthesisOk, language]);
 
   // --- Conversation
   const lastInputWasVoice = useRef(false);
   const speakThisReply = useRef(false);
+  const autoRetries = useRef(0);
   const events = useRef<ReplyEvents>({});
   const convo = useConversation({ userId: user.id, keepInTab: user.memoryMode !== 'NONE', language, mood, events });
 
   useEffect(() => {
     events.current = {
       onReplyStart: () => {
-        speakThisReply.current =
-          prefs.voiceOutputEnabled && synthesisOk && (lastInputWasVoice.current || view === 'voice' || user.interactionMode === 'VOICE');
+        speakThisReply.current = canSpeak && (lastInputWasVoice.current || view === 'voice' || user.interactionMode === 'VOICE');
         if (speakThisReply.current) player.beginStream(speakOptions());
       },
       onDelta: (delta) => {
@@ -99,18 +117,27 @@ export default function ConversationPage() {
       onReplyEnd: (message, outcome) => {
         const spoke = speakThisReply.current;
         if (spoke) {
-          if (outcome === 'stopped') player.stop();
-          else player.endStream();
+          if (outcome === 'done') player.endStream();
+          else player.stop();
         } else if (outcome === 'done') {
           setAnnouncement(message.content);
         }
         speakThisReply.current = false;
         if (!liveRef.current || outcome === 'stopped') return;
-        // In a live conversation, listen again once she has heard the reply.
-        // While it is still being spoken the check below waits, and the
-        // speech-finished effect takes over.
-        if (outcome === 'error') pauseLive();
-        else scheduleListen(spoke ? 800 : 500);
+        if (outcome === 'error') {
+          // A dropped connection or a busy moment: quietly try once more before pausing.
+          if (message.retryable !== false && autoRetries.current < 1) {
+            autoRetries.current++;
+            setTimeout(() => liveRef.current && convo.retry(), 1200);
+          } else {
+            pauseLive();
+          }
+          return;
+        }
+        autoRetries.current = 0;
+        // Listen again once she has heard the reply. While it is still being
+        // prepared or spoken the check waits, and the speech-finished effect takes over.
+        scheduleListen(spoke ? 800 : 500);
       },
     };
   });
@@ -149,6 +176,7 @@ export default function ConversationPage() {
 
   const submit = (text: string, source: 'voice' | 'text') => {
     if (!text.trim() || convo.pending) return;
+    if (source === 'text') unlockAudio();
     lastInputWasVoice.current = source === 'voice';
     void convo.send(text, { source, replacesLast: correcting, channel: source === 'voice' && view === 'voice' ? 'voice' : 'text' });
     setDraft('');
@@ -164,8 +192,6 @@ export default function ConversationPage() {
   const liveRef = useRef(false);
   const pendingRef = useRef(false);
   pendingRef.current = convo.pending;
-  const speakingRef = useRef(false);
-  speakingRef.current = speaking;
   const silentTurns = useRef(0);
   const listenTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [greeting, setGreeting] = useState<string | null>(null);
@@ -186,6 +212,7 @@ export default function ConversationPage() {
     if (convo.pending) convo.stop();
     setVoiceError(null);
     setInterim('');
+    const patient = liveRef.current && canListenPatiently();
     const rec = startRecognition(lang.speechTag, {
       onInterim: setInterim,
       onFinal: (text) => {
@@ -220,7 +247,7 @@ export default function ConversationPage() {
         setListening(false);
         recognizer.current = null;
       },
-    });
+    }, patient ? { endSilenceMs: PATIENT_SILENCE_MS, noSpeechMs: NO_SPEECH_MS } : {});
     if (rec) {
       recognizer.current = rec;
       setListening(true);
@@ -235,7 +262,7 @@ export default function ConversationPage() {
   function scheduleListen(delayMs: number) {
     clearTimeout(listenTimer.current);
     listenTimer.current = setTimeout(() => {
-      if (!liveRef.current || pendingRef.current || speakingRef.current) return;
+      if (!liveRef.current || pendingRef.current || playerRef.current?.busy) return;
       // The previous recognizer may still be closing; try again shortly.
       if (recognizer.current) scheduleListen(150);
       else startListeningRef.current();
@@ -249,11 +276,13 @@ export default function ConversationPage() {
 
   /** Starts a free-flowing conversation: a short spoken hello on the first turn, then listening. */
   const beginLive = () => {
+    unlockAudio();
+    autoRetries.current = 0;
     setLivePausedNote(false);
     setVoiceError(null);
     silentTurns.current = 0;
     setLiveMode(true);
-    const greet = convo.messages.length === 0 && !greeting && prefs.voiceOutputEnabled && synthesisOk;
+    const greet = convo.messages.length === 0 && !greeting && canSpeak;
     if (greet) {
       const hello = t('chat.greeting', { name: user.name });
       setGreeting(hello);
@@ -265,12 +294,19 @@ export default function ConversationPage() {
   };
 
   // When Anbu finishes speaking during a live conversation, it's her turn again.
-  const wasSpeaking = useRef(false);
+  const voiceBusy = speaking || preparingVoice;
+  const wasBusy = useRef(false);
   useEffect(() => {
-    if (wasSpeaking.current && !speaking && liveRef.current && !pendingRef.current) scheduleListen(350);
-    wasSpeaking.current = speaking;
+    if (wasBusy.current && !voiceBusy && liveRef.current && !pendingRef.current) scheduleListen(350);
+    wasBusy.current = voiceBusy;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [speaking]);
+  }, [voiceBusy]);
+
+  // Without a connection Anbu can't answer, so stop listening until she continues.
+  useEffect(() => {
+    if (!online && liveRef.current) pauseLive();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [online]);
 
   // Opening the voice screen from a tap (e.g. "Talk with Anbu") starts talking right away.
   // Browsers only allow speech after the person has interacted with the page.
@@ -344,7 +380,7 @@ export default function ConversationPage() {
     if (view === 'text') endRef.current?.scrollIntoView({ block: 'end', behavior: prefs.reducedMotion ? 'auto' : 'smooth' });
   }, [convo.messages.length, lastContent, prefs.reducedMotion, view]);
 
-  const state: OrbState = listening ? 'listening' : speaking ? 'speaking' : convo.pending ? 'thinking' : 'idle';
+  const state: OrbState = listening ? 'listening' : speaking ? 'speaking' : convo.pending || preparingVoice ? 'thinking' : 'idle';
   const statusText = {
     idle: t('chat.statusIdle'),
     listening: t('chat.statusListening'),
@@ -365,14 +401,14 @@ export default function ConversationPage() {
   const canCorrect = (m: UiMessage, index: number) =>
     m.source === 'voice' && index === lastUserIndex && !convo.pending && !listening && !correcting;
   const lastReply = [...convo.messages].reverse().find((m) => m.role === 'assistant');
-  const canReplay = synthesisOk && prefs.voiceOutputEnabled;
+  const canReplay = canSpeak;
 
   const voiceBanner = support
     ? support.recognition === 'no-api' && view === 'voice'
       ? t('voice.noApi')
       : support.recognition === 'language-rejected'
         ? t('voice.languageRejected', { lang: lang.nativeName })
-        : prefs.voiceOutputEnabled && support.synthesis === 'no-voice' && view === 'voice'
+        : prefs.voiceOutputEnabled && support.synthesis === 'no-voice' && !naturalOk && view === 'voice'
           ? t('voice.noVoice', { lang: lang.nativeName })
           : null
     : null;
@@ -431,6 +467,7 @@ export default function ConversationPage() {
     // One tap starts the conversation; after that it flows on its own until she pauses it.
     // While Anbu speaks, tapping hands the turn back to her.
     const mainAction = () => {
+      unlockAudio();
       if (state === 'speaking') {
         player.stop();
         if (live) startListening();
@@ -534,7 +571,10 @@ export default function ConversationPage() {
               {canReplay && lastReply?.status === 'done' && (
                 <button
                   type="button"
-                  onClick={() => player.speak(lastReply.content, speakOptions())}
+                  onClick={() => {
+                    unlockAudio();
+                    player.speak(lastReply.content, speakOptions());
+                  }}
                   className="flex min-h-9 items-center gap-1 transition-colors hover:text-primary"
                 >
                   <Icon name="volume_up" size={16} />
