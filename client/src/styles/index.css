@@ -1,0 +1,219 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/newsreader/opsz.css';
+@import '@fontsource-variable/newsreader/opsz-italic.css';
+@import '@fontsource-variable/plus-jakarta-sans';
+
+/* "Warm Sanctuary" design system (from the Stitch project "Anbu Emotional
+   Companion App"). Indian scripts fall back to system Indic fonts
+   (Nirmala UI on Windows, Noto on Android) to keep the app light. */
+@theme {
+  --font-sans: 'Plus Jakarta Sans Variable', 'Nirmala UI', 'Noto Sans', 'Noto Sans Tamil', 'Noto Sans Devanagari',
+    'Noto Sans Malayalam', 'Noto Sans Kannada', 'Noto Sans Telugu', system-ui, sans-serif;
+  --font-display: 'Newsreader Variable', 'Nirmala UI', Georgia, serif;
+
+  /* Material 3 palette from the design */
+  --color-primary: #8b4e3c;
+  --color-on-primary: #ffffff;
+  --color-primary-container: #c9826d;
+  /* Same hue, deep enough for white label text to meet WCAG AA (4.8:1). */
+  --color-primary-strong: #a95f49;
+  --color-on-primary-container: #4e1e0f;
+  --color-primary-fixed: #ffdbd1;
+  --color-primary-fixed-dim: #ffb59f;
+  --color-on-primary-fixed: #370d03;
+  --color-on-primary-fixed-variant: #6e3727;
+  --color-secondary: #7d5450;
+  --color-secondary-container: #fec7c2;
+  --color-on-secondary-container: #6b4440;
+  --color-secondary-fixed: #ffdad6;
+  --color-secondary-fixed-dim: #efbab5;
+  --color-on-secondary-fixed: #301311;
+  --color-tertiary: #54624f;
+  --color-tertiary-container: #899882;
+  --color-tertiary-fixed: #d8e7cf;
+  --color-tertiary-fixed-dim: #bccbb3;
+  --color-on-tertiary-container: #233020;
+  --color-on-tertiary-fixed-variant: #3d4a38;
+  --color-surface: #fdf9f3;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #f7f3ed;
+  --color-surface-container: #f1ede7;
+  --color-surface-container-high: #ebe8e2;
+  --color-surface-container-highest: #e6e2dc;
+  --color-on-surface: #1c1c18;
+  --color-on-surface-variant: #53433f;
+  --color-outline: #85736e;
+  --color-outline-variant: #d8c2bc;
+  --color-error: #ba1a1a;
+  --color-error-container: #ffdad6;
+  --color-inverse-surface: #31302d;
+
+  /* Earlier token names, mapped onto the same palette */
+  --color-cream-50: #f7f3ed;
+  --color-cream-100: #fdf9f3;
+  --color-cream-200: #f1ede7;
+  --color-cream-300: #ebe8e2;
+  --color-cream-400: #e6e2dc;
+  --color-terracotta-100: #ffdbd1;
+  --color-terracotta-300: #ffb59f;
+  --color-terracotta-400: #d69580;
+  --color-terracotta-500: #c9826d;
+  --color-terracotta-600: #8b4e3c;
+  --color-terracotta-700: #6e3727;
+  --color-sage-100: #d8e7cf;
+  --color-sage-300: #bccbb3;
+  --color-sage-500: #899882;
+  --color-sage-700: #54624f;
+  --color-rose-100: #ffdad6;
+  --color-rose-300: #fec7c2;
+  --color-rose-500: #efbab5;
+  --color-rose-700: #7d5450;
+  --color-ink: #1c1c18;
+  --color-ink-soft: #53433f;
+  --color-ink-faint: #6f5f5a;
+  --color-line: #e6dcd2;
+  --color-danger: #ba1a1a;
+  --color-danger-soft: #ffdad6;
+
+  /* Type scale (rem, so the text-size setting scales it) */
+  --text-display-lg: 2.5rem;
+  --text-display-lg--line-height: 3rem;
+  --text-display-lg--letter-spacing: -0.02em;
+  --text-headline-lg: 1.875rem;
+  --text-headline-lg--line-height: 2.375rem;
+  --text-headline-lg--letter-spacing: -0.01em;
+  --text-headline-md: 1.5rem;
+  --text-headline-md--line-height: 2rem;
+  --text-headline-sm: 1.25rem;
+  --text-headline-sm--line-height: 1.75rem;
+  --text-body-xl: 1.1875rem;
+  --text-body-xl--line-height: 1.875rem;
+  --text-body-lg: 1.0625rem;
+  --text-body-lg--line-height: 1.625rem;
+  --text-body-md: 0.9375rem;
+  --text-body-md--line-height: 1.375rem;
+  --text-label-lg: 0.9375rem;
+  --text-label-lg--line-height: 1.25rem;
+  --text-label-lg--letter-spacing: 0.01em;
+  --text-label-md: 0.8125rem;
+  --text-label-md--line-height: 1.125rem;
+  --text-label-md--letter-spacing: 0.02em;
+  --text-label-sm: 0.75rem;
+  --text-label-sm--line-height: 1rem;
+  --text-label-sm--letter-spacing: 0.03em;
+
+  --radius-lg: 2rem;
+  --radius-xl: 3rem;
+
+  /* Warm, low-contrast elevation - no cold grey shadows */
+  --shadow-sm: 0 1px 3px rgb(61 49 42 / 0.06), 0 1px 2px rgb(61 49 42 / 0.04);
+  --shadow-md: 0 4px 16px -2px rgb(74 59 50 / 0.08), 0 2px 4px -1px rgb(74 59 50 / 0.04);
+  --shadow-lg: 0 8px 30px -4px rgb(74 59 50 / 0.1), 0 2px 6px -1px rgb(74 59 50 / 0.04);
+  --shadow-xl: 0 16px 40px -8px rgb(139 78 60 / 0.22);
+  --shadow-soft: 0 4px 20px -2px rgb(61 49 42 / 0.06);
+  --shadow-card: 0 8px 24px -4px rgb(139 78 60 / 0.12);
+  --shadow-glow: 0 0 60px -10px rgb(201 130 109 / 0.45);
+  --shadow-fab: 0 8px 20px rgb(201 130 109 / 0.35);
+  --shadow-bar: 0 1px 12px rgb(61 49 42 / 0.04);
+  --shadow-bar-up: 0 -2px 16px rgb(61 49 42 / 0.05);
+
+  --animate-breathe: breathe 8s ease-in-out infinite;
+  --animate-soft-ping: soft-ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+
+  @keyframes breathe {
+    0%,
+    100% {
+      transform: scale(0.97);
+    }
+    50% {
+      transform: scale(1.05);
+    }
+  }
+  @keyframes soft-ping {
+    75%,
+    100% {
+      transform: scale(1.8);
+      opacity: 0;
+    }
+  }
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    background-color: var(--color-surface);
+    color: var(--color-on-surface);
+  }
+  html[data-text-size='lg'] {
+    font-size: 112.5%;
+  }
+  html[data-text-size='xl'] {
+    font-size: 125%;
+  }
+  html[data-contrast='high'] {
+    --color-on-surface-variant: #2f2522;
+    --color-ink-soft: #2f2522;
+    --color-ink-faint: #4a3c38;
+    --color-line: #a8917c;
+    --color-outline-variant: #a8917c;
+    --color-primary-strong: #8b4e3c;
+  }
+  body {
+    font-family: var(--font-sans);
+    font-size: var(--text-body-md);
+    line-height: 1.5;
+    min-height: 100dvh;
+    background-color: var(--color-surface);
+    -webkit-font-smoothing: antialiased;
+    overscroll-behavior-y: none;
+  }
+  ::selection {
+    background: var(--color-secondary-container);
+  }
+  :focus-visible {
+    outline: 3px solid var(--color-primary-container);
+    outline-offset: 2px;
+    border-radius: 0.75rem;
+  }
+  button,
+  [role='button'] {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+html[data-reduced-motion='true'] *,
+html[data-reduced-motion='true'] *::before,
+html[data-reduced-motion='true'] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+@utility safe-bottom {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
+@utility pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@utility pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+@utility font-display {
+  font-family: var(--font-display);
+  font-optical-sizing: auto;
+}
