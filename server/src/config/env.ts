@@ -34,9 +34,11 @@ const schema = z.object({
   AI_TIMEOUT_MS: z.coerce.number().int().min(5000).default(60000),
   AI_REFUSAL_FALLBACK: bool.default(true),
   GEMINI_API_KEY: z.string().optional(),
-  GEMINI_MODEL: z.string().default('gemini-3.8-flash'),
-  GEMINI_FALLBACK_MODELS: z.string().default('gemini-3.7-flash'),
-  GEMINI_THINKING_LEVEL: z.enum(['minimal', 'low', 'medium', 'high']).default('low'),
+  GEMINI_MODEL: z.string().default('gemini-3.5-flash-lite'),
+  /** Comma-separated backups, each optionally "model:thinking", e.g. "gemini-flash-lite-latest,gemini-3.8-flash:low". */
+  GEMINI_FALLBACK_MODELS: z.string().default('gemini-flash-lite-latest'),
+  GEMINI_THINKING_LEVEL: z.enum(['minimal', 'low', 'medium', 'high']).default('minimal'),
+  GEMINI_HEDGE_MS: z.coerce.number().int().min(500).max(30000).default(2500),
 
   MAIL_TRANSPORT: z.enum(['console', 'smtp']).default('console'),
   SMTP_HOST: z.string().optional(),

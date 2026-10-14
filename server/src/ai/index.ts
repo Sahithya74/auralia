@@ -1,6 +1,6 @@
 import { env } from '../config/env.js';
 import { AnthropicProvider } from './providers/anthropic.js';
-import { GeminiProvider } from './providers/gemini.js';
+import { GeminiProvider, parseModelList } from './providers/gemini.js';
 import { MockProvider } from './providers/mock.js';
 import type { AIProvider } from './types.js';
 
@@ -9,11 +9,13 @@ export function createProviderFromEnv(): AIProvider {
   if (env.AI_PROVIDER === 'gemini') {
     return new GeminiProvider({
       apiKey: env.GEMINI_API_KEY || undefined,
-      model: env.GEMINI_MODEL,
-      fallbackModels: env.GEMINI_FALLBACK_MODELS.split(',').map((m) => m.trim()).filter(Boolean),
-      thinkingLevel: env.GEMINI_THINKING_LEVEL,
+      models: [
+        ...parseModelList(env.GEMINI_MODEL, env.GEMINI_THINKING_LEVEL),
+        ...parseModelList(env.GEMINI_FALLBACK_MODELS, env.GEMINI_THINKING_LEVEL),
+      ],
       maxTokens: env.AI_MAX_TOKENS,
       timeoutMs: env.AI_TIMEOUT_MS,
+      hedgeMs: env.GEMINI_HEDGE_MS,
     });
   }
   return new AnthropicProvider({
