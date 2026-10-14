@@ -21,6 +21,7 @@ export function createRateLimiters() {
     refresh: rateLimit({ ...base, windowMs: 15 * 60_000, limit: 60 }),
     api: rateLimit({ ...base, windowMs: 15 * 60_000, limit: 600, keyGenerator: userOrIp }),
     chat: rateLimit({ ...base, windowMs: 60_000, limit: 20, keyGenerator: userOrIp }),
+    speech: rateLimit({ ...base, windowMs: 60_000, limit: 30, keyGenerator: userOrIp }),
   };
 }
 

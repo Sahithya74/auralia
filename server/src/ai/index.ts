@@ -1,4 +1,5 @@
 import { env } from '../config/env.js';
+import { GeminiSpeech } from './speech/geminiSpeech.js';
 import { AnthropicProvider } from './providers/anthropic.js';
 import { GeminiProvider, parseModelList } from './providers/gemini.js';
 import { MockProvider } from './providers/mock.js';
@@ -25,6 +26,17 @@ export function createProviderFromEnv(): AIProvider {
     maxTokens: env.AI_MAX_TOKENS,
     timeoutMs: env.AI_TIMEOUT_MS,
     refusalFallback: env.AI_REFUSAL_FALLBACK,
+  });
+}
+
+/** Natural voice for spoken replies, or null when it is turned off or has no key. */
+export function createSpeechFromEnv(): GeminiSpeech | null {
+  if (!env.NATURAL_VOICE || !env.GEMINI_API_KEY || env.AI_PROVIDER === 'mock') return null;
+  return new GeminiSpeech({
+    apiKey: env.GEMINI_API_KEY,
+    models: env.GEMINI_TTS_MODELS.split(',').map((m) => m.trim()).filter(Boolean),
+    voice: env.GEMINI_TTS_VOICE,
+    firstAudioTimeoutMs: env.GEMINI_TTS_FIRST_AUDIO_MS,
   });
 }
 

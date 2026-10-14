@@ -5,7 +5,8 @@ import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express, { Router } from 'express';
 import helmet from 'helmet';
-import { createProviderFromEnv, type AIProvider } from './ai/index.js';
+import { createProviderFromEnv, createSpeechFromEnv, type AIProvider } from './ai/index.js';
+import type { GeminiSpeech } from './ai/speech/geminiSpeech.js';
 import { env } from './config/env.js';
 import { LANGUAGES } from './config/languages.js';
 import { prisma } from './db.js';
@@ -19,13 +20,17 @@ import { conversationsRoutes } from './modules/conversations/conversations.route
 import { memoriesRoutes } from './modules/memories/memories.routes.js';
 import { accountRoutes, privacyRoutes } from './modules/privacy/privacy.routes.js';
 import { usersRoutes } from './modules/users/users.routes.js';
+import { voiceRoutes } from './modules/voice/voice.routes.js';
 
 export interface AppDependencies {
   ai?: AIProvider;
+  /** null turns natural voice off; undefined reads it from the environment. */
+  speech?: GeminiSpeech | null;
 }
 
 export function createApp(deps: AppDependencies = {}) {
   const ai = deps.ai ?? createProviderFromEnv();
+  const speech = deps.speech === undefined ? createSpeechFromEnv() : deps.speech;
   const limiters = createRateLimiters();
   const app = express();
 
@@ -56,6 +61,7 @@ export function createApp(deps: AppDependencies = {}) {
       status: database === 'ok' ? 'ok' : 'degraded',
       database,
       ai: { provider: ai.name, mock: ai.isMock },
+      voice: { natural: speech !== null },
       languages: LANGUAGES.map((l) => l.code),
     });
   });
@@ -66,6 +72,7 @@ export function createApp(deps: AppDependencies = {}) {
   protectedApi.use(requireAuth, limiters.api);
   protectedApi.use('/users', usersRoutes());
   protectedApi.use('/chat', chatRoutes(ai, limiters));
+  protectedApi.use('/voice', voiceRoutes(speech, limiters));
   protectedApi.use('/conversations', conversationsRoutes());
   protectedApi.use('/memories', memoriesRoutes());
   protectedApi.use('/privacy', privacyRoutes());
