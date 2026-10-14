@@ -23,7 +23,16 @@ export interface CompanionPromptContext {
   mood?: Mood;
   /** Present only in Personal memory mode. undefined = memory is off for this user. */
   memories?: PromptMemory[];
+  /** She is talking out loud in a hands-free voice conversation. */
+  spoken?: boolean;
 }
+
+const SPOKEN = `Live voice conversation
+- You are talking with her out loud right now, like a gentle phone call, and your words will be read aloud. Talk the way a caring person does: warm, simple, one thought at a time.
+- Keep each reply short - usually one to three sentences - so it flows back and forth and she has room to speak.
+- Respond to what she just said rather than summarising. Ask at most one easy question, and only when it helps her keep going.
+- Skip formal openings and closings ("Thank you for sharing", "I hope this helps"). No lists, emojis or symbols.
+- Her words come from speech recognition; if something sounds cut off, gently let her continue.`;
 
 // Static persona text is kept first so the prompt prefix stays identical across requests.
 const PERSONA = `You are Anbu, a warm and emotionally intelligent AI companion in an app for mothers and women in India. Many of them carry the emotional load of a household and rarely get a chance to talk about their own feelings. She opened this app because she wanted someone patient to listen.
@@ -107,5 +116,6 @@ export function buildCompanionPrompt(ctx: CompanionPromptContext): string {
     `Her preference\n- ${STYLE[ctx.responseStyle]}`,
     ...(about.length ? [`About her\n${about.join('\n')}`] : []),
     memoryBlock(ctx.memories),
+    ...(ctx.spoken ? [SPOKEN] : []),
   ].join('\n\n');
 }

@@ -26,6 +26,8 @@ export const chatSchema = z
     messages: z.array(turnSchema).min(1).max(80),
     mood: z.enum(MOODS).optional(),
     replacesLast: z.boolean().optional(),
+    /** "voice": hands-free spoken conversation, so replies should be short and conversational. */
+    channel: z.enum(['voice', 'text']).optional(),
   })
   .strict()
   .refine((b) => b.messages.at(-1)?.role === 'user', { path: ['messages'], message: 'Last message must be from the user' })
@@ -79,6 +81,7 @@ export async function prepareChat(userId: string, body: ChatRequest): Promise<Pr
           userName: user.name,
           mood: body.mood,
           memories: policy.memories ? user.memories : undefined,
+          spoken: body.channel === 'voice',
         })
       : buildSafetyPrompt(assessment, body.language, codeMixing);
 
