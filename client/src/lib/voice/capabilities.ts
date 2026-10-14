@@ -50,16 +50,33 @@ export function loadVoices(timeoutMs = 2000): Promise<SpeechSynthesisVoice[]> {
   return pending;
 }
 
+/** Neural voices (Edge "Online (Natural)", Google, Apple enhanced) sound far more human than older system voices. */
+const NATURAL_VOICE = /natural|neural|online|google|enhanced|premium|siri/i;
+/** Anbu speaks with a woman's voice where the device offers one. */
+const FEMALE_VOICE =
+  /female|woman|neerja|swara|pallavi|sobhana|sapna|shruti|heera|kalpana|aditi|lekha|veena|raveena|kajal|vani|meera/i;
+
 export function pickVoice(voices: SpeechSynthesisVoice[], speechTag: string): SpeechSynthesisVoice | null {
   const tag = speechTag.toLowerCase();
   const base = tag.split('-')[0]!;
   const norm = (v: SpeechSynthesisVoice) => v.lang.toLowerCase().replace('_', '-');
-  return (
-    voices.find((v) => norm(v) === tag && v.localService) ??
-    voices.find((v) => norm(v) === tag) ??
-    voices.find((v) => norm(v).split('-')[0] === base) ??
-    null
-  );
+  const score = (v: SpeechSynthesisVoice) => {
+    const lang = norm(v);
+    if (lang !== tag && lang.split('-')[0] !== base) return -1;
+    return (
+      (lang === tag ? 8 : 0) + (NATURAL_VOICE.test(v.name) ? 4 : 0) + (FEMALE_VOICE.test(v.name) ? 2 : 0) + (v.localService ? 1 : 0)
+    );
+  };
+  let best: SpeechSynthesisVoice | null = null;
+  let bestScore = -1;
+  for (const v of voices) {
+    const s = score(v);
+    if (s > bestScore) {
+      best = v;
+      bestScore = s;
+    }
+  }
+  return best;
 }
 
 export type RecognitionSupport = 'available' | 'no-api' | 'language-rejected';

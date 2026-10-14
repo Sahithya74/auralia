@@ -116,5 +116,7 @@ export interface Health {
   status: string;
   database: string;
   ai: { provider: string; mock: boolean };
+  /** natural: the server can speak replies in a natural voice. */
+  voice?: { natural: boolean };
   languages: string[];
 }
