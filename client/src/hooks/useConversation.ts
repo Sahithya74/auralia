@@ -86,7 +86,7 @@ export function useConversation({ userId, keepInTab, language, mood, events }: O
     setMessages((list) => list.map((m) => (m.id === id ? { ...m, ...(typeof change === 'function' ? change(m) : change) } : m)));
 
   const send = useCallback(
-    async (text: string, opts: { source: 'voice' | 'text'; replacesLast?: boolean }) => {
+    async (text: string, opts: { source: 'voice' | 'text'; replacesLast?: boolean; channel?: 'voice' | 'text' }) => {
       const content = text.trim();
       if (!content || pendingRef.current) return;
       pendingRef.current = true;
@@ -122,6 +122,7 @@ export function useConversation({ userId, keepInTab, language, mood, events }: O
             messages: toContext([...base, userMsg]),
             mood,
             replacesLast: opts.replacesLast || undefined,
+            channel: opts.channel,
           },
           {
             onMeta: ({ safety }) => patch({ safety }),
@@ -173,7 +174,7 @@ export function useConversation({ userId, keepInTab, language, mood, events }: O
     if (!lastUser || pendingRef.current) return;
     setMessages(list.slice(0, lastUserIndex));
     messagesRef.current = list.slice(0, lastUserIndex);
-    void send(lastUser.content, { source: lastUser.source ?? 'text' });
+    void send(lastUser.content, { source: lastUser.source ?? 'text', channel: lastUser.source === 'voice' ? 'voice' : 'text' });
   }, [send]);
 
   const reset = useCallback(() => {

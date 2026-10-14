@@ -9,6 +9,8 @@ export interface ChatRequest {
   messages: ChatTurn[];
   mood?: Mood;
   replacesLast?: boolean;
+  /** "voice" asks for short, flowing spoken replies. */
+  channel?: 'voice' | 'text';
 }
 
 export interface ChatDone {
