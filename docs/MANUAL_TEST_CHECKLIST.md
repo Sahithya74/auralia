@@ -23,14 +23,18 @@ Fill one row per device/browser. For each language, open **Settings → Voice** 
 ## 2. Tamil voice conversation (repeat the pattern for every language)
 
 - [ ] Onboarding: choose **தமிழ்**; the whole interface switches to Tamil immediately.
-- [ ] Home → **அன்புடன் பேசுங்கள்**. Tap the mic. The orb turns sage with ripples; status reads "கேட்டுக்கொண்டிருக்கிறேன்…".
+- [ ] Home → **அன்புடன் பேசுங்கள்**. The conversation starts on its own (or after one tap on the main button): Anbu greets her by name, then the orb turns sage with ripples; status reads "கேட்டுக்கொண்டிருக்கிறேன்…".
 - [ ] Speak naturally in spoken Tamil, e.g. *"வீட்டுல எல்லாரும் எல்லாத்தையும் நான்தான் செய்யணும்னு எதிர்பார்க்கிறாங்க. நான் களைப்பா இருக்கேனான்னு யாரும் கேக்கறதே இல்ல."*
 - [ ] Live captions show what was heard while speaking.
 - [ ] The reply appears word by word, **in Tamil script**, conversational (not literary) Tamil, no English sentences.
 - [ ] Speech starts before the full reply has finished (sentence by sentence) and the orb moves while speaking.
 - [ ] The reply acknowledges the feeling and asks a relevant question — no "be strong / stay positive" platitudes.
 - [ ] Tap **பேசுவதை நிறுத்து** mid-speech: speech stops immediately.
-- [ ] Tap the mic while Anbu is speaking: speech stops and listening starts (interrupting works).
+- [ ] Tap the main button while Anbu is speaking: speech stops and listening starts (interrupting works).
+- [ ] Keep talking for several turns **without touching the screen**: after every spoken reply, listening starts again by itself.
+- [ ] Tap **உரையாடலை இடைநிறுத்து** (pause): listening stops and nothing restarts until tapped again.
+- [ ] Stay silent for about 20 seconds: listening pauses itself with a note and a **Continue** button.
+- [ ] Switch to another tab or lock the phone mid-conversation: the microphone turns off.
 - [ ] Tanglish: say a sentence mixing English words ("office-la romba stress-a irukku"). Reply stays in Tamil, may mirror the English words. Turn **Settings → Allow mixing in English words** off and repeat: fewer English words.
 - [ ] Mis-recognition: say something that gets misheard → **நான் சொன்னதைத் திருத்து** → edit → send. The old exchange is replaced (with history on, check History shows only the corrected one).
 - [ ] **Settings → Let me check what was heard before sending** on: recognised text lands in the box for editing instead of sending.
@@ -82,7 +86,7 @@ Check each against the spec's conversation rules. Note anything robotic, preachy
 - [ ] First mic tap → browser permission prompt. **Block** → clear message explaining how to allow it, text input still works.
 - [ ] Allow it later via the padlock/site settings → mic works without reloading the app (or after one reload).
 - [ ] No microphone connected (desktop) → "No microphone was found" message.
-- [ ] Tap the mic and stay silent → "I didn't catch anything" message; nothing is sent.
+- [ ] Start a conversation and stay silent → after about 20 seconds it pauses with "It went quiet…"; nothing is sent.
 
 ## 8. Network failure
 

@@ -9,7 +9,7 @@ It is **not** a medical or counselling service, and it says so. It is designed t
 | **Client** | React 19 + TypeScript, Vite 8, Tailwind CSS 4, Framer Motion, react-i18next, vite-plugin-pwa |
 | **Server** | Node.js + Express 5 + TypeScript, Zod validation, JWT + rotating refresh cookies, bcrypt, express-rate-limit, Helmet |
 | **Database** | MySQL 8 via Prisma 6 |
-| **AI** | Provider interface with Anthropic Claude (`claude-opus-5-5`) and Google Gemini (`gemini-3.8-flash`, currently configured); streamed over SSE |
+| **AI** | Provider interface with Anthropic Claude (`claude-opus-5-5`) and Google Gemini (`gemini-3.5-flash-lite`, currently configured); streamed over SSE |
 | **Voice** | Browser Web Speech API (speech recognition + speech synthesis), detected per language with text fallback |
 | **Design** | "Warm Sanctuary" design system from the Stitch project *Anbu Emotional Companion App*: Newsreader + Plus Jakarta Sans (self-hosted), Material Symbols icons (embedded SVG), Material 3 warm palette |
 
@@ -65,7 +65,8 @@ Edit `server/.env`:
 | `JWT_ACCESS_SECRET` | a long random string: `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"` |
 | `AI_PROVIDER` | `anthropic` or `gemini` for real replies, or `mock` for clearly-labelled placeholder replies while developing |
 | `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `AI_EFFORT` | Claude settings (model defaults to `claude-opus-5-5`; effort `low` is fastest) |
-| `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_FALLBACK_MODELS`, `GEMINI_THINKING_LEVEL` | Gemini settings (defaults: `gemini-3.8-flash`, fallback `gemini-3.7-flash`, thinking `low`). Overloaded (503/429) requests are retried twice with back-off and the fallback model, before any text is sent. |
+| `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_FALLBACK_MODELS`, `GEMINI_THINKING_LEVEL` | Gemini settings (defaults: `gemini-3.5-flash-lite`, fallback `gemini-flash-lite-latest`, thinking `minimal`). Each model may carry its own thinking level, e.g. `gemini-3.8-flash:low` (minimal thinking only works on Flash-Lite models). |
+| `GEMINI_HEDGE_MS` | If the main model has sent no text after this many milliseconds (default 2500), the fallback model is started too and whichever answers first is used; the other is cancelled. Overloaded or rate-limited models are skipped straight away. |
 
 Keys live only in `server/.env` — never in client code.
 | `MAIL_TRANSPORT` | `console` prints password-reset links in the server terminal (development only); `smtp` sends real email (fill `SMTP_*`) |
@@ -210,7 +211,7 @@ More detail: [docs/PRIVACY_AND_DATA.md](docs/PRIVACY_AND_DATA.md).
 | "Microphone access is blocked" | Allow the microphone in the browser's site settings (padlock icon). |
 | Replies aren't read aloud | No voice for that language on the device — install one, or keep using text. |
 | Tests time out starting workers | Slow synced folder (OneDrive); move the project or re-run. |
-| Gemini: "experiencing high demand" / slow first reply | Google-side load on the key's tier; the server retries and falls back automatically. Try later, a paid tier, or `AI_PROVIDER=anthropic`. |
+| Gemini: "experiencing high demand" / slow first reply | Google-side load on the key's tier; the server races the fallback model after `GEMINI_HEDGE_MS`. Lower that value, try later, use a paid tier, or `AI_PROVIDER=anthropic`. |
 | Prisma refuses a command "invoked by an AI agent" | Prisma blocks destructive commands run by AI coding agents unless you consent. Tests use the non-destructive `migrate deploy`; run resets yourself if needed. |
 | Public link shows "Cloudflare Tunnel error 1033" | The network blocks Cloudflare's tunnel port 7844; use the Pinggy command above (port 443). |
 | Public link stopped working | Free Pinggy links expire after 60 minutes, or the PC/terminal stopped; start the tunnel again for a new link. |
