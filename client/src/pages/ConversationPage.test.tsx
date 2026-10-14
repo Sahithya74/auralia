@@ -55,6 +55,42 @@ function renderPage(url = '/talk?mode=text') {
   );
 }
 
+type Handler = ((event: unknown) => void) | null;
+
+/** A scripted stand-in for the browser's speech recognition. */
+class FakeRecognition {
+  static instances: FakeRecognition[] = [];
+  lang = '';
+  continuous = false;
+  interimResults = false;
+  maxAlternatives = 1;
+  aborted = false;
+  onresult: Handler = null;
+  onerror: Handler = null;
+  onend: Handler = null;
+  onspeechend: Handler = null;
+  start() {
+    FakeRecognition.instances.push(this);
+  }
+  stop() {
+    this.onend?.({});
+  }
+  abort() {
+    this.aborted = true;
+    this.onerror?.({ error: 'aborted' });
+    this.onend?.({});
+  }
+  say(text: string) {
+    const result = Object.assign([{ transcript: text, confidence: 0.9 }], { isFinal: true });
+    this.onresult?.({ resultIndex: 0, results: [result] });
+    this.onend?.({});
+  }
+  silence() {
+    this.onerror?.({ error: 'no-speech' });
+    this.onend?.({});
+  }
+}
+
 /** Finds text inside the message list (replies are also announced in a screen-reader live region). */
 const findReply = (text: RegExp) => screen.findByText(text, { selector: 'li *' });
 
@@ -79,6 +115,57 @@ describe('ConversationPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Type instead' }));
     expect(screen.getByRole('textbox')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Start speaking' })).not.toBeInTheDocument();
+  });
+
+  describe('live voice conversation', () => {
+    const speechWindow = window as unknown as { SpeechRecognition?: unknown };
+    beforeEach(() => {
+      FakeRecognition.instances = [];
+      speechWindow.SpeechRecognition = FakeRecognition;
+      return () => delete speechWindow.SpeechRecognition;
+    });
+
+    it('keeps listening after each reply without another tap, until she pauses', async () => {
+      currentUser = makeUser('SESSION', 'VOICE');
+      replyWith('That sounds like a long day.');
+      renderPage('/talk?mode=voice');
+      const start = await screen.findByRole('button', { name: 'Start speaking' });
+      await waitFor(() => expect(start).toBeEnabled());
+      await userEvent.click(start);
+      expect(FakeRecognition.instances).toHaveLength(1);
+
+      FakeRecognition.instances[0]!.say('I am so tired');
+      expect(await screen.findByText(/That sounds like a long day\./, { selector: 'p' })).toBeInTheDocument();
+      expect(streamChat.mock.calls[0]![0]).toMatchObject({ channel: 'voice' });
+
+      // Her turn again, with no button press.
+      await waitFor(() => expect(FakeRecognition.instances).toHaveLength(2));
+      expect(FakeRecognition.instances[1]!.lang).toBe('en-IN');
+
+      await userEvent.click(screen.getByRole('button', { name: 'Pause conversation' }));
+      expect(FakeRecognition.instances[1]!.aborted).toBe(true);
+      expect(screen.getByRole('button', { name: 'Start speaking' })).toBeEnabled();
+    });
+
+    it('pauses itself after a long silence and can continue', async () => {
+      currentUser = makeUser('SESSION', 'VOICE');
+      renderPage('/talk?mode=voice');
+      const start = await screen.findByRole('button', { name: 'Start speaking' });
+      await waitFor(() => expect(start).toBeEnabled());
+      await userEvent.click(start);
+
+      for (let turn = 1; turn <= 3; turn++) {
+        await waitFor(() => expect(FakeRecognition.instances).toHaveLength(turn));
+        FakeRecognition.instances[turn - 1]!.silence();
+      }
+      expect(await screen.findByText(/It went quiet/)).toBeInTheDocument();
+      await new Promise((r) => setTimeout(r, 300));
+      expect(FakeRecognition.instances).toHaveLength(3);
+
+      await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+      expect(FakeRecognition.instances).toHaveLength(4);
+      expect(streamChat).not.toHaveBeenCalled();
+    });
   });
 
   it('streams a reply into the conversation and sends recent context in the chosen language', async () => {
