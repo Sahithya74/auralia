@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -7,7 +7,22 @@ import ConversationPage from './ConversationPage';
 
 const streamChat = vi.fn();
 vi.mock('../lib/api/chatStream', () => ({ streamChat: (...args: unknown[]) => streamChat(...args) }));
-vi.mock('../hooks/useHealth', () => ({ useHealth: () => ({ ai: { mock: false } }) }));
+let health: { ai: { mock: boolean }; voice?: { natural: boolean } } = { ai: { mock: false } };
+vi.mock('../hooks/useHealth', () => ({ useHealth: () => health }));
+
+/** Natural-voice playback stand-in: each call waits until the test says it has finished. */
+const natural = vi.hoisted(() => ({ supported: false, calls: [] as { text: string; finish: () => void }[] }));
+vi.mock('../lib/voice/naturalVoice', () => ({
+  isNaturalVoiceSupported: () => natural.supported,
+  isSlowConnection: () => false,
+  unlockAudio: () => undefined,
+  playNaturalVoice: (text: string) => {
+    let finish!: () => void;
+    const finished = new Promise<void>((resolve) => (finish = resolve));
+    natural.calls.push({ text, finish });
+    return { started: Promise.resolve(true), finished, stop: () => finish() };
+  },
+}));
 
 let currentUser: User;
 vi.mock('../contexts/AuthContext', () => ({
@@ -122,7 +137,63 @@ describe('ConversationPage', () => {
     beforeEach(() => {
       FakeRecognition.instances = [];
       speechWindow.SpeechRecognition = FakeRecognition;
-      return () => delete speechWindow.SpeechRecognition;
+      return () => {
+        delete speechWindow.SpeechRecognition;
+        health = { ai: { mock: false } };
+        natural.supported = false;
+        natural.calls = [];
+      };
+    });
+
+    async function startTalking() {
+      const start = await screen.findByRole('button', { name: 'Start speaking' });
+      await waitFor(() => expect(start).toBeEnabled());
+      await userEvent.click(start);
+    }
+
+    it('greets her in the natural voice and only listens once Anbu has finished speaking', async () => {
+      health = { ai: { mock: false }, voice: { natural: true } };
+      natural.supported = true;
+      currentUser = makeUser('SESSION', 'VOICE');
+      replyWith('I am right here with you.');
+      renderPage('/talk?mode=voice');
+      await startTalking();
+
+      await waitFor(() => expect(natural.calls).toHaveLength(1));
+      expect(natural.calls[0]!.text).toContain('Meena');
+      expect(FakeRecognition.instances).toHaveLength(0);
+      await act(async () => natural.calls[0]!.finish());
+      await waitFor(() => expect(FakeRecognition.instances).toHaveLength(1));
+
+      act(() => FakeRecognition.instances[0]!.say('I had a hard day'));
+      await waitFor(() => expect(natural.calls).toHaveLength(2));
+      expect(natural.calls[1]!.text).toBe('I am right here with you.');
+      // Not listening while Anbu is still talking, so the microphone never hears her.
+      await new Promise((r) => setTimeout(r, 1000));
+      expect(FakeRecognition.instances).toHaveLength(1);
+      await act(async () => natural.calls[1]!.finish());
+      await waitFor(() => expect(FakeRecognition.instances).toHaveLength(2));
+    });
+
+    it('quietly tries again once when the connection drops, and the conversation carries on', async () => {
+      currentUser = makeUser('SESSION', 'VOICE');
+      let calls = 0;
+      streamChat.mockImplementation(async (_body, handlers) => {
+        calls++;
+        if (calls === 1) {
+          handlers.onError({ code: 'AI_NETWORK', retryable: true, partial: false });
+          return;
+        }
+        handlers.onMeta({ safety: { level: 'none', categories: [], resources: [] }, ai: { mock: false } });
+        handlers.onDelta('Still here with you. ');
+        handlers.onDone({ conversationId: null, persisted: false, staticFallback: false, timing: { prepareMs: 1, firstTokenMs: 1, totalMs: 1 } });
+      });
+      renderPage('/talk?mode=voice');
+      await startTalking();
+      act(() => FakeRecognition.instances[0]!.say('hello'));
+      expect(await screen.findByText(/Still here with you\./, { selector: 'p' }, { timeout: 4000 })).toBeInTheDocument();
+      expect(streamChat).toHaveBeenCalledTimes(2);
+      await waitFor(() => expect(FakeRecognition.instances).toHaveLength(2));
     });
 
     it('keeps listening after each reply without another tap, until she pauses', async () => {

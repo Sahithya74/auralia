@@ -1,12 +1,20 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { toContext, type UiMessage } from '../hooks/useConversation';
 import { createSseParser } from './api/sse';
 import { LANGUAGE_CODES } from './i18n/languages';
 import { detectVoiceSupport, pickVoice } from './voice/capabilities';
+import { pcm16ToFloat32, playNaturalVoice } from './voice/naturalVoice';
 import { startRecognition } from './voice/recognition';
-import { cleanForSpeech, splitSentences } from './voice/speechPlayer';
+import { cleanForSpeech, SpeechPlayer, splitSentences } from './voice/speechPlayer';
+
+vi.mock('./voice/naturalVoice', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./voice/naturalVoice')>()),
+  playNaturalVoice: vi.fn(),
+}));
+
+const flush = () => new Promise((r) => setTimeout(r, 0));
 
 describe('SSE parser', () => {
   it('handles events split across chunks, comments and multiple events per chunk', () => {
@@ -44,12 +52,146 @@ describe('voice capability detection', () => {
     expect(pickVoice([voice('en-US')], 'ml-IN')).toBeNull();
   });
 
+  it('prefers natural-sounding and female voices for the language', () => {
+    const named = (name: string, lang = 'en-IN', localService = true) => ({ lang, localService, name }) as SpeechSynthesisVoice;
+    const voices = [
+      named('Microsoft Ravi - English (India)'),
+      named('Microsoft Heera - English (India)'),
+      named('Microsoft Neerja Online (Natural) - English (India)', 'en-IN', false),
+      named('Google UK English Male', 'en-GB', false),
+    ];
+    expect(pickVoice(voices, 'en-IN')?.name).toBe('Microsoft Neerja Online (Natural) - English (India)');
+    expect(pickVoice(voices.slice(0, 2), 'en-IN')?.name).toBe('Microsoft Heera - English (India)');
+  });
+
   it('reports missing APIs instead of failing silently', async () => {
     expect(await detectVoiceSupport('ta-IN')).toEqual({ recognition: 'no-api', synthesis: 'no-api', voice: null });
     const onError = vi.fn();
     const onEnd = vi.fn();
     expect(startRecognition('ta-IN', { onInterim: vi.fn(), onFinal: vi.fn(), onError, onEnd })).toBeNull();
     expect(onError).toHaveBeenCalledWith('unavailable');
+  });
+});
+
+describe('natural voice', () => {
+  it('turns streamed 16-bit PCM into samples, carrying a split sample to the next chunk', () => {
+    const first = pcm16ToFloat32(new Uint8Array([0x00, 0x40, 0x00]), null);
+    expect(Array.from(first.samples)).toEqual([0.5]);
+    expect(first.carry).toBe(0x00);
+    const second = pcm16ToFloat32(new Uint8Array([0xc0]), first.carry);
+    expect(Array.from(second.samples)).toEqual([-0.5]);
+    expect(second.carry).toBeNull();
+  });
+});
+
+describe('SpeechPlayer with the natural voice', () => {
+  const play = vi.mocked(playNaturalVoice);
+  const options = { lang: 'ta-IN', rate: 1, voice: null, natural: { language: 'ta', deviceFallback: false } };
+  afterEach(() => play.mockReset());
+
+  function playback(ok: boolean) {
+    let finish!: () => void;
+    const finished = new Promise<void>((r) => (finish = r));
+    const stop = vi.fn(() => finish());
+    play.mockReturnValue({ started: Promise.resolve(ok), finished, stop });
+    return { finish, stop };
+  }
+
+  it('speaks the whole reply once it is complete: preparing, then speaking, then done', async () => {
+    const { finish } = playback(true);
+    const events = { onSpeakingChange: vi.fn(), onPreparingChange: vi.fn() };
+    const player = new SpeechPlayer(events);
+    player.beginStream(options);
+    player.pushStream('வணக்கம். ');
+    player.pushStream('நான் இங்கே இருக்கிறேன்.');
+    expect(play).not.toHaveBeenCalled();
+    player.endStream();
+    expect(play).toHaveBeenCalledWith('வணக்கம். நான் இங்கே இருக்கிறேன்.', 'ta', expect.anything());
+    expect(events.onPreparingChange).toHaveBeenLastCalledWith(true);
+    expect(player.busy).toBe(true);
+    await flush();
+    expect(events.onSpeakingChange).toHaveBeenLastCalledWith(true);
+    expect(events.onPreparingChange).toHaveBeenLastCalledWith(false);
+    finish();
+    await flush();
+    expect(events.onSpeakingChange).toHaveBeenLastCalledWith(false);
+    expect(player.busy).toBe(false);
+  });
+
+  it('goes quiet instead of using a wrong-language device voice when the natural voice is unavailable', async () => {
+    playback(false);
+    const events = { onSpeakingChange: vi.fn(), onPreparingChange: vi.fn() };
+    const player = new SpeechPlayer(events);
+    player.speak('வணக்கம்', options);
+    await flush();
+    expect(events.onSpeakingChange).not.toHaveBeenCalled();
+    expect(events.onPreparingChange).toHaveBeenLastCalledWith(false);
+    expect(player.busy).toBe(false);
+  });
+
+  it('stops the natural voice immediately', async () => {
+    const { stop } = playback(true);
+    const player = new SpeechPlayer({ onSpeakingChange: vi.fn() });
+    player.speak('Hello', options);
+    player.stop();
+    expect(stop).toHaveBeenCalled();
+    expect(player.busy).toBe(false);
+  });
+});
+
+describe('patient listening', () => {
+  type Handler = ((event: unknown) => void) | null;
+  class Recognition {
+    static last: Recognition;
+    continuous = false;
+    interimResults = false;
+    maxAlternatives = 1;
+    lang = '';
+    stopped = false;
+    onresult: Handler = null;
+    onerror: Handler = null;
+    onend: Handler = null;
+    onspeechend: Handler = null;
+    start() {
+      Recognition.last = this;
+    }
+    stop() {
+      this.stopped = true;
+      this.onend?.({});
+    }
+    abort() {
+      this.onend?.({});
+    }
+    hear(transcript: string, isFinal: boolean) {
+      this.onresult?.({ resultIndex: 0, results: [Object.assign([{ transcript, confidence: 0.9 }], { isFinal })] });
+    }
+  }
+  const speechWindow = window as unknown as { SpeechRecognition?: unknown };
+  afterEach(() => delete speechWindow.SpeechRecognition);
+
+  it('waits through short pauses and keeps words still being recognised when the turn ends', async () => {
+    speechWindow.SpeechRecognition = Recognition;
+    const onFinal = vi.fn();
+    startRecognition('en-IN', { onInterim: vi.fn(), onFinal, onError: vi.fn(), onEnd: vi.fn() }, { endSilenceMs: 60 });
+    const rec = Recognition.last;
+    expect(rec.continuous).toBe(true);
+    rec.hear('I was', false);
+    await new Promise((r) => setTimeout(r, 30));
+    rec.hear('I was thinking', false);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(rec.stopped).toBe(false);
+    await new Promise((r) => setTimeout(r, 60));
+    expect(rec.stopped).toBe(true);
+    expect(onFinal).toHaveBeenCalledWith('I was thinking', expect.anything());
+  });
+
+  it('reports no speech when nothing is heard in time', async () => {
+    speechWindow.SpeechRecognition = Recognition;
+    const onError = vi.fn();
+    startRecognition('en-IN', { onInterim: vi.fn(), onFinal: vi.fn(), onError, onEnd: vi.fn() }, { endSilenceMs: 60, noSpeechMs: 40 });
+    await new Promise((r) => setTimeout(r, 80));
+    expect(onError).toHaveBeenCalledWith('no-speech');
+    expect(onError).toHaveBeenCalledTimes(1);
   });
 });
 
