@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.test.tsbuildinfo",
+    "noUnusedLocals": false,
+    "types": ["vite/client", "vite-plugin-pwa/react", "node"]
+  },
+  "include": ["src"],
+  "exclude": []
+}
