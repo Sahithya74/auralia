@@ -1,6 +1,6 @@
-# Anbu — an AI companion who listens
+# Auralia — an AI companion who listens
 
-Anbu is a mobile-first, installable web app (PWA) where mothers and women can talk — by voice or text, in **English, Tamil, Hindi, Malayalam, Kannada or Telugu** — with a warm, honest AI companion whenever they need someone to listen.
+Auralia is a mobile-first, installable web app (PWA) where mothers and women can talk — by voice or text, in **English, Tamil, Hindi, Malayalam, Kannada or Telugu** — with a warm, honest AI companion whenever they need someone to listen.
 
 It is **not** a medical or counselling service, and it says so. It is designed to help people feel heard and more able to handle real life, and to encourage connection with real people rather than dependence on the app.
 
