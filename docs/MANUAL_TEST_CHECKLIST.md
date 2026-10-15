@@ -36,8 +36,9 @@ Fill one row per device/browser. For each language, open **Settings → Voice** 
 - [ ] Pause for a second mid-sentence while speaking: Anbu waits for you to finish instead of replying to half a sentence.
 - [ ] Switch Wi-Fi off and on during a reply: the conversation retries once by itself, or pauses with a clear message.
 - [ ] Tap **உரையாடலை இடைநிறுத்து** (pause): listening stops and nothing restarts until tapped again.
-- [ ] Stay silent for about 20 seconds: listening pauses itself with a note and a **Continue** button.
-- [ ] Switch to another tab or lock the phone mid-conversation: the microphone turns off.
+- [ ] Stay silent for about 40 seconds: listening pauses itself with a note and a **Continue** button.
+- [ ] Talk hands-free for a few minutes on a phone without touching it: the screen stays on.
+- [ ] Switch to another tab or lock the phone mid-conversation: the microphone turns off. Come back within 10 minutes: the conversation carries on without a tap.
 - [ ] Tanglish: say a sentence mixing English words ("office-la romba stress-a irukku"). Reply stays in Tamil, may mirror the English words. Turn **Settings → Allow mixing in English words** off and repeat: fewer English words.
 - [ ] Mis-recognition: say something that gets misheard → **நான் சொன்னதைத் திருத்து** → edit → send. The old exchange is replaced (with history on, check History shows only the corrected one).
 - [ ] **Settings → Let me check what was heard before sending** on: recognised text lands in the box for editing instead of sending.
@@ -89,7 +90,7 @@ Check each against the spec's conversation rules. Note anything robotic, preachy
 - [ ] First mic tap → browser permission prompt. **Block** → clear message explaining how to allow it, text input still works.
 - [ ] Allow it later via the padlock/site settings → mic works without reloading the app (or after one reload).
 - [ ] No microphone connected (desktop) → "No microphone was found" message.
-- [ ] Start a conversation and stay silent → after about 20 seconds it pauses with "It went quiet…"; nothing is sent.
+- [ ] Start a conversation and stay silent → after about 40 seconds it pauses with "It went quiet…"; nothing is sent.
 
 ## 8. Network failure
 

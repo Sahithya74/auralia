@@ -41,7 +41,7 @@ Refresh tokens are stored only as SHA-256 hashes. Presenting an already-rotated 
 |---|---|---|---|
 | GET | `/users/me` | — | `{user}` |
 | PATCH | `/users/me` | any of `{name, preferredLanguage, interactionMode: VOICE\|TEXT\|BOTH, onboardingCompleted: true}` | `{user}` |
-| PATCH | `/users/me/preferences` | any of `{responseStyle: LISTEN\|SOLUTIONS\|BALANCED, codeMixing, voiceOutputEnabled, voiceRate (0.5–1.5), voiceInputReview, captionsEnabled, reducedMotion, textSize: md\|lg\|xl, highContrast, dailyPromptEnabled}` | `{user}` |
+| PATCH | `/users/me/preferences` | any of `{responseStyle: LISTEN\|SOLUTIONS\|BALANCED, codeMixing, voiceOutputEnabled, voiceRate (0.5–1.5), voiceGender: FEMALE\|MALE, voiceInputReview, captionsEnabled, reducedMotion, textSize: md\|lg\|xl, highContrast, dailyPromptEnabled}` | `{user}` |
 
 `user.persistence` = `{mode, transcripts, memories}` tells the client exactly what may be stored. History and analytics consent are changed only through `/privacy/settings`.
 
@@ -52,6 +52,7 @@ Refresh tokens are stored only as SHA-256 hashes. Presenting an already-rotated 
 | POST | `/chat/stream` | Streams a reply as **Server-Sent Events** |
 | POST | `/chat` | Same, returns JSON when complete |
 | POST | `/chat/reflect` | Optional post-conversation summary / next steps / memory suggestions |
+| POST | `/voice/speech` | `{text, language, gender?: FEMALE\|MALE, allowSlow?}` → Anbu's reply as streamed 16-bit PCM (`audio/L16; rate=24000`). 503 `VOICE_BUSY` when no natural voice is available (the app then uses the device voice); 501 when natural voice is off. `allowSlow` also tries the slower backup voice model, for devices with no voice of their own |
 
 Request body for `/chat/stream` and `/chat`:
 
