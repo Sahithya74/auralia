@@ -51,7 +51,7 @@ describe('buildCompanionPrompt', () => {
 
   it('asks for short, flowing replies only in a live voice conversation', () => {
     expect(buildCompanionPrompt({ ...base, spoken: true })).toContain('Live voice conversation');
-    expect(buildCompanionPrompt({ ...base, spoken: true })).toContain('one to three sentences');
+    expect(buildCompanionPrompt({ ...base, spoken: true })).toContain('one to three short sentences');
     expect(buildCompanionPrompt(base)).not.toContain('Live voice conversation');
   });
 
