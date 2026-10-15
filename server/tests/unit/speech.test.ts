@@ -17,14 +17,25 @@ const quotaError = (seconds: number) =>
 function speechWith(scripts: Record<string, Script>, clock = { now: 0 }, firstAudioTimeoutMs = 200) {
   const started: string[] = [];
   const speech = new GeminiSpeech(
-    { apiKey: 'test-key', models: Object.keys(scripts), voice: 'Sulafat', firstAudioTimeoutMs, now: () => clock.now },
+    { apiKey: 'test-key', models: Object.keys(scripts), voices: { FEMALE: 'Sulafat', MALE: 'Achird' }, firstAudioTimeoutMs, now: () => clock.now },
     async (model, _request, signal) => {
       started.push(model);
-      return scripts[model]!(signal);
+      // Scripts may be named "model:ms" to set that model's start time.
+      const script = scripts[model] ?? Object.entries(scripts).find(([name]) => name.split(':')[0] === model)![1];
+      return script(signal);
     },
   );
   return { speech, started, clock };
 }
+
+const wait = (ms: number, signal: AbortSignal) =>
+  new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(resolve, ms);
+    signal.addEventListener('abort', () => {
+      clearTimeout(timer);
+      reject(new Error('aborted'));
+    });
+  });
 
 const request: SpeechRequest = { text: 'I am here with you.' };
 
@@ -110,11 +121,47 @@ describe('GeminiSpeech', () => {
   });
 });
 
+describe('GeminiSpeech voice and timing', () => {
+  it('uses the female voice unless the male one is chosen', async () => {
+    const voices: (string | undefined)[] = [];
+    const speech = new GeminiSpeech(
+      { apiKey: 'k', models: ['a'], voices: { FEMALE: 'Sulafat', MALE: 'Achird' }, firstAudioTimeoutMs: 200 },
+      async (_model, req) => {
+        voices.push(req.gender);
+        return (async function* () {
+          yield audio(2);
+        })();
+      },
+    );
+    await speech.stream({ text: 'hi' });
+    await speech.stream({ text: 'hi', gender: 'MALE' });
+    expect(voices).toEqual([undefined, 'MALE']);
+  });
+
+  it('gives a slower model the longer start time configured for it', async () => {
+    const { speech } = speechWith(
+      {
+        'slow:400': async function* (signal) {
+          await wait(150, signal);
+          yield audio(2);
+        },
+      },
+      { now: 0 },
+      50,
+    );
+    // Slow models are only tried when the device has no voice to fall back on.
+    await expect(speech.stream(request)).rejects.toBeInstanceOf(SpeechUnavailableError);
+    expect((await speech.stream({ ...request, allowSlow: true })).model).toBe('slow');
+  });
+});
+
 describe('speech helpers', () => {
   it('reads the retry delay from a quota error, and rests for an hour on a daily quota', () => {
     expect(retryDelayMs('"retryDelay": "59s"')).toBe(59_000);
     expect(retryDelayMs('\\"retryDelay\\": \\"12.5s\\"')).toBe(12_500);
     expect(retryDelayMs('GenerateRequestsPerDayPerProjectPerModel')).toBe(3_600_000);
+    // A used-up daily quota rests the model for as long as Google says, not just an hour.
+    expect(retryDelayMs('PerDayPerProjectPerModel-FreeTier \\"retryDelay\\": \\"24057s\\"')).toBe(24_057_000);
     expect(retryDelayMs('no hint')).toBeNull();
   });
 

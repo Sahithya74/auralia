@@ -36,16 +36,18 @@ const schema = z.object({
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_MODEL: z.string().default('gemini-3.5-flash-lite'),
   /** Comma-separated backups, each optionally "model:thinking", e.g. "gemini-flash-lite-latest,gemini-3.8-flash:low". */
-  GEMINI_FALLBACK_MODELS: z.string().default('gemini-flash-lite-latest'),
+  GEMINI_FALLBACK_MODELS: z.string().default('gemini-3.1-flash-lite,gemini-flash-lite-latest'),
   GEMINI_THINKING_LEVEL: z.enum(['minimal', 'low', 'medium', 'high']).default('minimal'),
-  GEMINI_HEDGE_MS: z.coerce.number().int().min(500).max(30000).default(2500),
+  GEMINI_HEDGE_MS: z.coerce.number().int().min(500).max(30000).default(1500),
   /** Natural spoken replies via Gemini text-to-speech (needs GEMINI_API_KEY). The browser's voice is the fallback. */
   NATURAL_VOICE: bool.default(true),
   /** Rotated in order: free-tier keys allow only a few speech requests per minute per model. */
   GEMINI_TTS_MODELS: z
     .string()
-    .default('gemini-3.8-flash-lite-tts,gemini-3.8-flash-tts,gemini-3.1-flash-tts-preview'),
+    .default('gemini-3.8-flash-lite-tts,gemini-3.8-flash-tts,gemini-3.1-flash-tts-preview,gemini-2.5-flash-preview-tts:8000'),
+  /** Anbu's voice: female by default (Sulafat, warm); people can choose the male one (Charon). */
   GEMINI_TTS_VOICE: z.string().default('Sulafat'),
+  GEMINI_TTS_MALE_VOICE: z.string().default('Charon'),
   GEMINI_TTS_FIRST_AUDIO_MS: z.coerce.number().int().min(1000).max(30000).default(3500),
 
   MAIL_TRANSPORT: z.enum(['console', 'smtp']).default('console'),

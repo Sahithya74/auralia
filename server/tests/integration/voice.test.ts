@@ -10,7 +10,7 @@ import { bearer, describeDb, registerUser, resetDatabase } from './helpers.js';
 function fakeSpeech(fail = false) {
   const spoken: string[] = [];
   const speech = new GeminiSpeech(
-    { apiKey: 'test-key', models: ['voice-a'], voice: 'Sulafat', firstAudioTimeoutMs: 1000 },
+    { apiKey: 'test-key', models: ['voice-a'], voices: { FEMALE: 'Sulafat', MALE: 'Achird' }, firstAudioTimeoutMs: 1000 },
     async (_model, req) => {
       spoken.push(req.text);
       return (async function* () {
@@ -40,7 +40,7 @@ describeDb('natural voice', () => {
     const res = await request(app)
       .post('/api/voice/speech')
       .set(bearer(user.token))
-      .send({ text: '**I hear you.** Take your time.', language: 'ta' })
+      .send({ text: '**I hear you.** Take your time.', language: 'ta', gender: 'MALE' })
       .buffer(true)
       .parse(binary)
       .expect(200);
@@ -71,5 +71,6 @@ describeDb('natural voice', () => {
     await request(app).post('/api/voice/speech').set(bearer(user.token)).send({ text: '', language: 'en' }).expect(400);
     await request(app).post('/api/voice/speech').set(bearer(user.token)).send({ text: 'x'.repeat(1501), language: 'en' }).expect(400);
     await request(app).post('/api/voice/speech').set(bearer(user.token)).send({ text: 'Hello', language: 'fr' }).expect(400);
+    await request(app).post('/api/voice/speech').set(bearer(user.token)).send({ text: 'Hello', language: 'en', gender: 'robot' }).expect(400);
   });
 });

@@ -35,7 +35,7 @@ export function createSpeechFromEnv(): GeminiSpeech | null {
   return new GeminiSpeech({
     apiKey: env.GEMINI_API_KEY,
     models: env.GEMINI_TTS_MODELS.split(',').map((m) => m.trim()).filter(Boolean),
-    voice: env.GEMINI_TTS_VOICE,
+    voices: { FEMALE: env.GEMINI_TTS_VOICE, MALE: env.GEMINI_TTS_MALE_VOICE },
     firstAudioTimeoutMs: env.GEMINI_TTS_FIRST_AUDIO_MS,
   });
 }

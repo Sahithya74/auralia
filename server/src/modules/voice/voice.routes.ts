@@ -12,6 +12,9 @@ export const speechSchema = z
   .object({
     text: z.string().trim().min(1).max(1500),
     language: z.enum(LANGUAGE_CODES),
+    gender: z.enum(['FEMALE', 'MALE']).default('FEMALE'),
+    /** The device has no voice to fall back on, so a slow natural voice is better than none. */
+    allowSlow: z.boolean().default(false),
   })
   .strict();
 
@@ -38,7 +41,7 @@ export function voiceRoutes(speech: GeminiSpeech | null, limiters: RateLimiters)
 
     let stream: SpeechStream;
     try {
-      stream = await speech.stream({ text, signal: controller.signal });
+      stream = await speech.stream({ text, gender: body.gender, allowSlow: body.allowSlow, signal: controller.signal });
     } catch (err) {
       if (controller.signal.aborted) return;
       logger.warn('voice.unavailable', { userId, ...errorMeta(err) });
@@ -71,6 +74,7 @@ export function voiceRoutes(speech: GeminiSpeech | null, limiters: RateLimiters)
       userId,
       model: stream.model,
       language: body.language,
+      gender: body.gender,
       chars: text.length,
       firstAudioMs,
       totalMs: Math.round(performance.now() - t0),

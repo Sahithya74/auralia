@@ -11,8 +11,17 @@ import { ApiError, GoogleGenAI } from '@google/genai';
 export const SPEECH_SAMPLE_RATE = 24_000;
 export const SPEECH_MIME = `audio/L16; rate=${SPEECH_SAMPLE_RATE}; channels=1`;
 
+export type VoiceGender = 'FEMALE' | 'MALE';
+
 export interface SpeechRequest {
   text: string;
+  /** Anbu speaks with a woman's voice unless she chooses a man's. */
+  gender?: VoiceGender;
+  /**
+   * Also try the slow models (those given a longer start time). Worth it only when
+   * the device has no voice to fall back on: a late voice beats silence.
+   */
+  allowSlow?: boolean;
   signal?: AbortSignal;
 }
 
@@ -23,9 +32,13 @@ export interface SpeechStream {
 
 export interface SpeechOptions {
   apiKey: string;
-  /** Tried in order, skipping any that are resting after a quota or server error. */
+  /**
+   * Tried in order, skipping any that are resting after a quota or server error.
+   * "model:ms" gives a slower model longer to start speaking.
+   */
   models: string[];
-  voice: string;
+  /** Prebuilt Gemini voice for each choice. */
+  voices: Record<VoiceGender, string>;
   /** Give up on a model if it has produced no audio after this long. */
   firstAudioTimeoutMs: number;
   now?: () => number;
@@ -47,11 +60,21 @@ export function cleanSpeechText(text: string): string {
     .trim();
 }
 
-/** Seconds Google asks us to wait, from a 429 error body such as `"retryDelay": "59s"`. */
+/**
+ * How long Google asks us to wait, from a 429 error body such as `"retryDelay": "59s"`.
+ * A used-up daily quota without a hint rests the model for an hour.
+ */
 export function retryDelayMs(message: string): number | null {
-  if (/PerDay/i.test(message)) return 60 * 60_000;
   const match = /retryDelay\\?"?:\s*\\?"(\d+(?:\.\d+)?)s/.exec(message);
-  return match ? Math.ceil(Number(match[1]) * 1000) : null;
+  if (match) return Math.ceil(Number(match[1]) * 1000);
+  return /PerDay/i.test(message) ? 60 * 60_000 : null;
+}
+
+/** "model" or "model:ms" from configuration. */
+function parseModel(entry: string, defaultMs: number): { model: string; firstAudioMs: number } {
+  const [model, ms] = entry.split(':');
+  const parsed = Number(ms);
+  return { model: model!.trim(), firstAudioMs: ms && parsed > 0 ? parsed : defaultMs };
 }
 
 type Generate = (model: string, request: SpeechRequest, signal: AbortSignal) => Promise<AsyncIterable<Buffer>>;
@@ -76,7 +99,7 @@ export class GeminiSpeech {
           config: {
             abortSignal: signal,
             responseModalities: ['AUDIO'],
-            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: options.voice } } },
+            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: options.voices[request.gender ?? 'FEMALE'] } } },
           },
         });
         return (async function* () {
@@ -91,7 +114,7 @@ export class GeminiSpeech {
 
   /** True when at least one model is not resting. */
   get available(): boolean {
-    return this.options.models.some((m) => !this.isResting(m));
+    return this.options.models.some((m) => !this.isResting(parseModel(m, 0).model));
   }
 
   private isResting(model: string): boolean {
@@ -117,8 +140,10 @@ export class GeminiSpeech {
    * device's own voice.
    */
   async stream(request: SpeechRequest): Promise<SpeechStream> {
-    for (const model of this.options.models) {
+    for (const entry of this.options.models) {
+      const { model, firstAudioMs } = parseModel(entry, this.options.firstAudioTimeoutMs);
       if (request.signal?.aborted) break;
+      if (firstAudioMs > this.options.firstAudioTimeoutMs && !request.allowSlow) continue;
       if (this.isResting(model)) continue;
 
       const controller = new AbortController();
@@ -129,7 +154,7 @@ export class GeminiSpeech {
         timer = setTimeout(() => {
           controller.abort();
           reject(new Error('No audio in time'));
-        }, this.options.firstAudioTimeoutMs);
+        }, firstAudioMs);
       });
       try {
         const iterator = (await Promise.race([this.generate(model, request, controller.signal), tooSlow]))[Symbol.asyncIterator]();
