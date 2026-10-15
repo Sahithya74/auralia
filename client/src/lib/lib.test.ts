@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { toContext, type UiMessage } from '../hooks/useConversation';
 import { createSseParser } from './api/sse';
 import { LANGUAGE_CODES } from './i18n/languages';
-import { detectVoiceSupport, pickVoice } from './voice/capabilities';
+import { detectVoiceSupport, isNeuralVoice, pickVoice } from './voice/capabilities';
 import { pcm16ToFloat32, playNaturalVoice } from './voice/naturalVoice';
 import { startRecognition } from './voice/recognition';
 import { cleanForSpeech, SpeechPlayer, splitSentences } from './voice/speechPlayer';
@@ -64,6 +64,30 @@ describe('voice capability detection', () => {
     expect(pickVoice(voices.slice(0, 2), 'en-IN')?.name).toBe('Microsoft Heera - English (India)');
   });
 
+  it('recognises built-in neural voices, which are used before the server voice', () => {
+    const named = (name: string) => ({ lang: 'ta-IN', localService: false, name }) as SpeechSynthesisVoice;
+    expect(isNeuralVoice(named('Microsoft Pallavi Online (Natural) - Tamil (India)'))).toBe(true);
+    expect(isNeuralVoice(named('Microsoft Zira - English (United States)'))).toBe(false);
+    expect(isNeuralVoice(null)).toBe(false);
+  });
+
+  it('uses a voice of the chosen gender and never one of the other', () => {
+    const named = (name: string, lang: string) => ({ lang, localService: true, name }) as SpeechSynthesisVoice;
+    const windows = [
+      named('Microsoft Ravi - English (India)', 'en-IN'),
+      named('Microsoft David - English (United States)', 'en-US'),
+      named('Microsoft Zira - English (United States)', 'en-US'),
+      named('Microsoft Valluvar - Tamil (India)', 'ta-IN'),
+    ];
+    // A woman's voice in another English accent beats a man's voice in Indian English.
+    expect(pickVoice(windows, 'en-IN', 'FEMALE')?.name).toBe('Microsoft Zira - English (United States)');
+    expect(pickVoice(windows, 'en-IN', 'MALE')?.name).toBe('Microsoft Ravi - English (India)');
+    expect(pickVoice(windows, 'ta-IN', 'FEMALE')).toBeNull();
+    expect(pickVoice(windows, 'ta-IN', 'MALE')?.name).toBe('Microsoft Valluvar - Tamil (India)');
+    // A voice whose gender is unknown (e.g. on Android) can still be used.
+    expect(pickVoice([named('Tamil India', 'ta-IN')], 'ta-IN', 'FEMALE')?.name).toBe('Tamil India');
+  });
+
   it('reports missing APIs instead of failing silently', async () => {
     expect(await detectVoiceSupport('ta-IN')).toEqual({ recognition: 'no-api', synthesis: 'no-api', voice: null });
     const onError = vi.fn();
@@ -86,7 +110,7 @@ describe('natural voice', () => {
 
 describe('SpeechPlayer with the natural voice', () => {
   const play = vi.mocked(playNaturalVoice);
-  const options = { lang: 'ta-IN', rate: 1, voice: null, natural: { language: 'ta', deviceFallback: false } };
+  const options = { lang: 'ta-IN', rate: 1, voice: null, natural: { language: 'ta', deviceFallback: false, gender: 'FEMALE' as const } };
   afterEach(() => play.mockReset());
 
   function playback(ok: boolean) {
@@ -106,7 +130,7 @@ describe('SpeechPlayer with the natural voice', () => {
     player.pushStream('நான் இங்கே இருக்கிறேன்.');
     expect(play).not.toHaveBeenCalled();
     player.endStream();
-    expect(play).toHaveBeenCalledWith('வணக்கம். நான் இங்கே இருக்கிறேன்.', 'ta', expect.anything());
+    expect(play).toHaveBeenCalledWith('வணக்கம். நான் இங்கே இருக்கிறேன்.', 'ta', expect.objectContaining({ gender: 'FEMALE', allowSlow: true }));
     expect(events.onPreparingChange).toHaveBeenLastCalledWith(true);
     expect(player.busy).toBe(true);
     await flush();
@@ -151,6 +175,7 @@ describe('patient listening', () => {
     onresult: Handler = null;
     onerror: Handler = null;
     onend: Handler = null;
+    onspeechstart: Handler = null;
     onspeechend: Handler = null;
     start() {
       Recognition.last = this;
@@ -183,6 +208,21 @@ describe('patient listening', () => {
     await new Promise((r) => setTimeout(r, 60));
     expect(rec.stopped).toBe(true);
     expect(onFinal).toHaveBeenCalledWith('I was thinking', expect.anything());
+  });
+
+  it('ends the turn after she stops speaking even if no words were reported yet', async () => {
+    speechWindow.SpeechRecognition = Recognition;
+    const onError = vi.fn();
+    startRecognition('ta-IN', { onInterim: vi.fn(), onFinal: vi.fn(), onError, onEnd: vi.fn() }, { endSilenceMs: 40, noSpeechMs: 60 });
+    const rec = Recognition.last;
+    (rec.onspeechstart as () => void)();
+    await new Promise((r) => setTimeout(r, 90));
+    // Hearing her voice keeps the "nothing heard" timeout from cutting her off.
+    expect(onError).not.toHaveBeenCalled();
+    expect(rec.stopped).toBe(false);
+    (rec.onspeechend as () => void)();
+    await new Promise((r) => setTimeout(r, 60));
+    expect(rec.stopped).toBe(true);
   });
 
   it('reports no speech when nothing is heard in time', async () => {

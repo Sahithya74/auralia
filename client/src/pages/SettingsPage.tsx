@@ -7,10 +7,12 @@ import { ChoiceCard, TextField, Toggle } from '../components/ui/Form';
 import { ChevronRightIcon, ShieldIcon, SpeakerIcon } from '../components/ui/Icons';
 import { Banner, Card, PageShell, SectionTitle } from '../components/ui/Layout';
 import { useAuth, useUser } from '../contexts/AuthContext';
-import type { Preferences, ResponseStyle, TextSize } from '../lib/api/types';
+import { useHealth } from '../hooks/useHealth';
+import type { Preferences, ResponseStyle, TextSize, VoiceGender } from '../lib/api/types';
 import { languageInfo } from '../lib/i18n/languages';
 import { KEYS, local } from '../lib/storage';
-import { detectVoiceSupport, type VoiceSupport } from '../lib/voice/capabilities';
+import { detectVoiceSupport, isNeuralVoice, type VoiceSupport } from '../lib/voice/capabilities';
+import { isNaturalVoiceSupported, unlockAudio } from '../lib/voice/naturalVoice';
 import { SpeechPlayer } from '../lib/voice/speechPlayer';
 
 const player = new SpeechPlayer({ onSpeakingChange: () => undefined });
@@ -22,6 +24,7 @@ export default function SettingsPage() {
   const navigate = useNavigate();
   const prefs = user.preferences;
   const lang = languageInfo(user.preferredLanguage);
+  const health = useHealth();
 
   const [error, setError] = useState(false);
   const [name, setName] = useState(user.name);
@@ -30,8 +33,10 @@ export default function SettingsPage() {
   const [rate, setRate] = useState(prefs.voiceRate);
 
   useEffect(() => {
-    void detectVoiceSupport(lang.speechTag).then(setSupport);
-  }, [lang.speechTag]);
+    void detectVoiceSupport(lang.speechTag, prefs.voiceGender).then(setSupport);
+  }, [lang.speechTag, prefs.voiceGender]);
+  const naturalOk = Boolean(health?.voice?.natural) && isNaturalVoiceSupported();
+  const deviceVoiceOk = support?.synthesis === 'available';
   useEffect(() => () => player.stop(), []);
 
   const save = (changes: Partial<Preferences>) => {
@@ -64,9 +69,33 @@ export default function SettingsPage() {
           <dd className="text-ink-soft">{t('settings.voiceInput')}</dd>
           <dd className="font-semibold">{support?.recognition === 'available' ? t('settings.available') : t('settings.unavailable')}</dd>
           <dd className="text-ink-soft">{t('settings.voiceOutputLabel')}</dd>
-          <dd className="font-semibold">{support?.synthesis === 'available' ? t('settings.available') : t('settings.unavailable')}</dd>
+          <dd className="font-semibold">{naturalOk || deviceVoiceOk ? t('settings.available') : t('settings.unavailable')}</dd>
         </dl>
         <Toggle label={t('settings.voiceOutput')} checked={prefs.voiceOutputEnabled} onChange={(v) => save({ voiceOutputEnabled: v })} />
+        <fieldset className="py-2">
+          <legend className="mb-1 font-semibold text-ink">{t('settings.voiceGender')}</legend>
+          <p className="mb-2 text-sm text-ink-faint">{t('settings.voiceGenderHint')}</p>
+          <div className="flex gap-2">
+            {(
+              [
+                ['FEMALE', 'voiceFemale'],
+                ['MALE', 'voiceMale'],
+              ] as [VoiceGender, string][]
+            ).map(([value, key]) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={prefs.voiceGender === value}
+                onClick={() => save({ voiceGender: value })}
+                className={`min-h-11 flex-1 rounded-2xl border font-semibold ${
+                  prefs.voiceGender === value ? 'border-terracotta-500 bg-terracotta-100 text-terracotta-700' : 'border-line bg-cream-50 text-ink-soft'
+                }`}
+              >
+                {t(`settings.${key}`)}
+              </button>
+            ))}
+          </div>
+        </fieldset>
         <div className="flex flex-col gap-2 py-3">
           <label htmlFor="voice-rate" className="font-semibold text-ink">
             {t('settings.voiceRate')}
@@ -92,8 +121,19 @@ export default function SettingsPage() {
             size="sm"
             className="self-start"
             icon={<SpeakerIcon size={18} />}
-            disabled={support?.synthesis !== 'available'}
-            onClick={() => player.speak(t('settings.voiceTestPhrase'), { lang: lang.speechTag, rate, voice: support?.voice ?? null })}
+            disabled={!naturalOk && !deviceVoiceOk}
+            onClick={() => {
+              unlockAudio();
+              player.speak(t('settings.voiceTestPhrase'), {
+                lang: lang.speechTag,
+                rate,
+                voice: support?.voice ?? null,
+                natural:
+                  naturalOk && !isNeuralVoice(support?.voice)
+                    ? { language: user.preferredLanguage, deviceFallback: deviceVoiceOk, gender: prefs.voiceGender }
+                    : undefined,
+              });
+            }}
           >
             {t('settings.voiceTest')}
           </Button>

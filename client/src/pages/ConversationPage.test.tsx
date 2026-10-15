@@ -46,6 +46,7 @@ function makeUser(memoryMode: User['memoryMode'], interactionMode: User['interac
       codeMixing: true,
       voiceOutputEnabled: true,
       voiceRate: 1,
+      voiceGender: 'FEMALE',
       voiceInputReview: false,
       captionsEnabled: true,
       reducedMotion: true,
@@ -83,6 +84,7 @@ class FakeRecognition {
   onresult: Handler = null;
   onerror: Handler = null;
   onend: Handler = null;
+  onspeechstart: Handler = null;
   onspeechend: Handler = null;
   start() {
     FakeRecognition.instances.push(this);
@@ -225,17 +227,45 @@ describe('ConversationPage', () => {
       await waitFor(() => expect(start).toBeEnabled());
       await userEvent.click(start);
 
-      for (let turn = 1; turn <= 3; turn++) {
+      for (let turn = 1; turn <= 5; turn++) {
         await waitFor(() => expect(FakeRecognition.instances).toHaveLength(turn));
         FakeRecognition.instances[turn - 1]!.silence();
       }
       expect(await screen.findByText(/It went quiet/)).toBeInTheDocument();
       await new Promise((r) => setTimeout(r, 300));
-      expect(FakeRecognition.instances).toHaveLength(3);
+      expect(FakeRecognition.instances).toHaveLength(5);
 
       await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
-      expect(FakeRecognition.instances).toHaveLength(4);
+      expect(FakeRecognition.instances).toHaveLength(6);
       expect(streamChat).not.toHaveBeenCalled();
+    });
+
+    it('turns the microphone off while she is away from the page and carries on when she returns', async () => {
+      currentUser = makeUser('SESSION', 'VOICE');
+      renderPage('/talk?mode=voice');
+      await startTalking();
+      expect(FakeRecognition.instances).toHaveLength(1);
+
+      const setHidden = (hidden: boolean) => {
+        Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+        Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => (hidden ? 'hidden' : 'visible') });
+        act(() => {
+          document.dispatchEvent(new Event('visibilitychange'));
+        });
+      };
+      try {
+        setHidden(true);
+        expect(FakeRecognition.instances[0]!.aborted).toBe(true);
+        await new Promise((r) => setTimeout(r, 400));
+        expect(FakeRecognition.instances).toHaveLength(1);
+
+        setHidden(false);
+        await waitFor(() => expect(FakeRecognition.instances).toHaveLength(2));
+        expect(screen.getByRole('button', { name: 'Pause conversation' })).toBeInTheDocument();
+      } finally {
+        delete (document as unknown as Record<string, unknown>).hidden;
+        delete (document as unknown as Record<string, unknown>).visibilityState;
+      }
     });
   });
 

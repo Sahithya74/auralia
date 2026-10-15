@@ -1,4 +1,5 @@
 import { apiFetch } from '../api/client';
+import type { VoiceGender } from '../api/types';
 
 // Plays Anbu's replies in the natural voice generated on the server. The audio
 // arrives as streamed 16-bit PCM and is scheduled with the Web Audio API as it
@@ -11,9 +12,15 @@ const CHUNK_SECONDS = 0.3;
 const START_LEAD_SECONDS = 0.08;
 /** Use the device voice instead if no audio has arrived by then. */
 const FIRST_AUDIO_TIMEOUT_MS = 6_500;
+/** With no device voice to fall back on, wait longer: a late voice beats silence. */
+const SLOW_FIRST_AUDIO_TIMEOUT_MS = 15_000;
 /** Stop waiting when the audio stream goes quiet partway through. */
 const STALL_TIMEOUT_MS = 6_000;
 const PULSE_MS = 350;
+/** Audio arriving slower than it plays would stutter; below this rate it is treated as slow. */
+const SLOW_RATE = 1.0;
+/** On a slow connection without a device voice, wait at most this long for the whole reply. */
+const SLOW_WAIT_MS = 20_000;
 
 type AudioContextCtor = typeof AudioContext;
 
@@ -26,6 +33,14 @@ let context: AudioContext | null = null;
 
 export function isNaturalVoiceSupported(): boolean {
   return audioContextCtor() !== null && typeof ReadableStream !== 'undefined';
+}
+
+/** After the server says the natural voice is busy or used up for now, don't ask again for a while. */
+const BUSY_PAUSE_MS = 2 * 60_000;
+let restingUntil = 0;
+
+export function isNaturalVoiceResting(): boolean {
+  return Date.now() < restingUntil;
 }
 
 /** 2G-class connections or data saver, where streaming audio would arrive slower than it plays. */
@@ -91,7 +106,20 @@ export interface NaturalPlayback {
   stop(): void;
 }
 
-export function playNaturalVoice(text: string, language: string, events: { onPulse?(): void } = {}): NaturalPlayback {
+export interface NaturalVoiceOptions {
+  onPulse?(): void;
+  gender?: VoiceGender;
+  /** Let the server use its slower backup voices (only when the device has no voice of its own). */
+  allowSlow?: boolean;
+  /**
+   * When the audio arrives slower than it plays, give up so the device voice can
+   * speak instead. Otherwise the whole reply is downloaded first and then played
+   * without gaps.
+   */
+  preferDeviceWhenSlow?: boolean;
+}
+
+export function playNaturalVoice(text: string, language: string, events: NaturalVoiceOptions = {}): NaturalPlayback {
   const controller = new AbortController();
   const sources = new Set<AudioBufferSourceNode>();
   let resolveStarted!: (ok: boolean) => void;
@@ -162,10 +190,16 @@ export function playNaturalVoice(text: string, language: string, events: { onPul
       }
     };
 
-    let timer = setTimeout(() => controller.abort(), FIRST_AUDIO_TIMEOUT_MS);
+    let timer = setTimeout(() => controller.abort(), events.allowSlow ? SLOW_FIRST_AUDIO_TIMEOUT_MS : FIRST_AUDIO_TIMEOUT_MS);
+    let firstByteAt = 0;
+    let received = 0;
+    /** Slow connection without a device voice: collect everything, then play it smoothly. */
+    let waitForAll = false;
+    let slowTimer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const res = await apiFetch('/voice/speech', { method: 'POST', body: { text, language }, signal: controller.signal });
+      const res = await apiFetch('/voice/speech', { method: 'POST', body: { text, language, gender: events.gender ?? 'FEMALE', allowSlow: Boolean(events.allowSlow) }, signal: controller.signal });
       if (!res.ok || !res.body) {
+        if (res.status === 503 || res.status === 501) restingUntil = Date.now() + BUSY_PAUSE_MS;
         clearTimeout(timer);
         return finish();
       }
@@ -175,17 +209,37 @@ export function playNaturalVoice(text: string, language: string, events: { onPul
         if (done) break;
         clearTimeout(timer);
         timer = setTimeout(() => controller.abort(), STALL_TIMEOUT_MS);
+        firstByteAt ||= performance.now();
         const converted = pcm16ToFloat32(value, carry);
         carry = converted.carry;
         pending.push(converted.samples);
         pendingLength += converted.samples.length;
+        received += converted.samples.length;
+        if (waitForAll) continue;
+        if (!playing && pendingLength >= SAMPLE_RATE * FIRST_CHUNK_SECONDS) {
+          const seconds = Math.max((performance.now() - firstByteAt) / 1000, 0.001);
+          if (received / SAMPLE_RATE / seconds < SLOW_RATE) {
+            if (events.preferDeviceWhenSlow) {
+              controller.abort();
+              clearTimeout(timer);
+              return finish();
+            }
+            waitForAll = true;
+            slowTimer = setTimeout(() => {
+              stopped = true;
+              controller.abort();
+            }, SLOW_WAIT_MS);
+            continue;
+          }
+        }
         if (pendingLength >= SAMPLE_RATE * (playing ? CHUNK_SECONDS : FIRST_CHUNK_SECONDS)) schedule();
       }
     } catch {
       // Network trouble or stopped: play whatever arrived.
     }
     clearTimeout(timer);
-    if (stopped) return;
+    clearTimeout(slowTimer);
+    if (stopped) return finish();
     schedule();
     if (!playing) return finish();
     endTimer = setTimeout(finish, Math.max(0, (nextTime - ctx.currentTime) * 1000) + 60);

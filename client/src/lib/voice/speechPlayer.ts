@@ -1,3 +1,4 @@
+import type { VoiceGender } from '../api/types';
 import { isSynthesisAvailable } from './capabilities';
 import { playNaturalVoice, type NaturalPlayback } from './naturalVoice';
 
@@ -10,7 +11,7 @@ export interface SpeakOptions {
    * unavailable, the device voice is used only if `deviceFallback` is true (that is,
    * the device has a voice for the language).
    */
-  natural?: { language: string; deviceFallback: boolean };
+  natural?: { language: string; deviceFallback: boolean; gender: VoiceGender };
 }
 
 export interface SpeechPlayerEvents {
@@ -150,7 +151,12 @@ export class SpeechPlayer {
     const natural = this.options?.natural;
     if (!text || !natural) return;
     const generation = this.generation;
-    const playback = playNaturalVoice(text, natural.language, { onPulse: () => this.events.onBoundary?.() });
+    const playback = playNaturalVoice(text, natural.language, {
+      gender: natural.gender,
+      onPulse: () => this.events.onBoundary?.(),
+      preferDeviceWhenSlow: natural.deviceFallback && this.available,
+      allowSlow: !(natural.deviceFallback && this.available),
+    });
     this.natural = playback;
     this.setPreparing(true);
     void playback.started.then((ok) => {

@@ -19,10 +19,11 @@ import type { ConversationDetail, Mood, ResponseStyle } from '../lib/api/types';
 import { isSupported, languageInfo } from '../lib/i18n/languages';
 import { reflectionHandoff } from '../lib/reflectionHandoff';
 import { KEYS, local } from '../lib/storage';
-import { detectVoiceSupport, type VoiceSupport } from '../lib/voice/capabilities';
-import { isNaturalVoiceSupported, isSlowConnection, unlockAudio } from '../lib/voice/naturalVoice';
+import { detectVoiceSupport, isNeuralVoice, type VoiceSupport } from '../lib/voice/capabilities';
+import { isNaturalVoiceResting, isNaturalVoiceSupported, isSlowConnection, unlockAudio } from '../lib/voice/naturalVoice';
 import { canListenPatiently, startRecognition, type RecognitionError, type Recognizer } from '../lib/voice/recognition';
 import { SpeechPlayer, type SpeakOptions } from '../lib/voice/speechPlayer';
+import { keepScreenOn } from '../lib/voice/wakeLock';
 
 const MOODS: Mood[] = ['carrying', 'tired', 'peaceful', 'need_to_talk'];
 const STATES: OrbState[] = ['idle', 'listening', 'thinking', 'speaking'];
@@ -36,6 +37,8 @@ const STATE_DOT: Record<OrbState, string> = {
 /** Live conversation: a pause this long ends her turn; this much silence counts as not speaking. */
 const PATIENT_SILENCE_MS = 1500;
 const NO_SPEECH_MS = 8000;
+/** Coming back to the page within this long carries a live conversation on without a tap. */
+const RESUME_WITHIN_MS = 10 * 60_000;
 const MAIN_BUTTON_ICON = { idle: 'mic', listening: 'pause', thinking: 'hourglass_top', speaking: 'stop' } as const;
 
 export default function ConversationPage() {
@@ -67,8 +70,8 @@ export default function ConversationPage() {
   // --- What voice features this browser offers for the current language
   const [support, setSupport] = useState<VoiceSupport | null>(null);
   const recheckSupport = useCallback(() => {
-    void detectVoiceSupport(lang.speechTag).then(setSupport);
-  }, [lang.speechTag]);
+    void detectVoiceSupport(lang.speechTag, prefs.voiceGender).then(setSupport);
+  }, [lang.speechTag, prefs.voiceGender]);
   useEffect(recheckSupport, [recheckSupport]);
   const recognitionOk = support?.recognition === 'available';
   const synthesisOk = support?.synthesis === 'available';
@@ -88,15 +91,18 @@ export default function ConversationPage() {
   });
   const player = playerRef.current;
   const speakOptions = useCallback((): SpeakOptions => {
-    // On a very slow connection the device voice starts sooner, when it has one.
-    const natural = naturalOk && !(synthesisOk && isSlowConnection());
+    // The device voice starts sooner (sentence by sentence while the reply arrives). It is
+    // used when it is itself a natural-sounding voice, on a very slow connection, or while
+    // the server's voice is busy.
+    const natural =
+      naturalOk && !(synthesisOk && (isNeuralVoice(support?.voice) || isSlowConnection() || isNaturalVoiceResting()));
     return {
       lang: lang.speechTag,
       rate: prefs.voiceRate,
       voice: support?.voice ?? null,
-      natural: natural ? { language, deviceFallback: synthesisOk } : undefined,
+      natural: natural ? { language, deviceFallback: synthesisOk, gender: prefs.voiceGender } : undefined,
     };
-  }, [lang.speechTag, prefs.voiceRate, support, naturalOk, synthesisOk, language]);
+  }, [lang.speechTag, prefs.voiceRate, prefs.voiceGender, support, naturalOk, synthesisOk, language]);
 
   // --- Conversation
   const lastInputWasVoice = useRef(false);
@@ -196,8 +202,10 @@ export default function ConversationPage() {
   const listenTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [greeting, setGreeting] = useState<string | null>(null);
   const [livePausedNote, setLivePausedNote] = useState(false);
-  /** Quiet turns in a row (no speech heard) before the live conversation pauses itself. */
-  const MAX_SILENT_TURNS = 3;
+  /** Quiet turns in a row (no speech heard, about 8 s each) before the live conversation pauses itself. */
+  const MAX_SILENT_TURNS = 5;
+  /** When she left the page during a live conversation, so it can carry on when she returns. */
+  const awaySince = useRef<number | null>(null);
 
   const setLiveMode = (on: boolean) => {
     liveRef.current = on;
@@ -318,14 +326,41 @@ export default function ConversationPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [support, recognitionOk, view]);
 
-  // Don't keep the microphone open in the background.
+  // Keep the screen on while talking hands-free, so the phone doesn't lock mid-conversation.
   useEffect(() => {
-    const onHide = () => {
-      if (document.hidden && liveRef.current) pauseLive();
+    void keepScreenOn(live);
+  }, [live]);
+
+  // Don't keep the microphone open in the background. When she comes back to the
+  // page soon, the conversation carries on by itself; after a long break it waits.
+  const resumeRef = useRef<() => void>(() => undefined);
+  resumeRef.current = () => {
+    const away = awaySince.current;
+    awaySince.current = null;
+    if (away === null || !online || view !== 'voice') return;
+    if (Date.now() - away > RESUME_WITHIN_MS) {
+      setLivePausedNote(true);
+      return;
+    }
+    silentTurns.current = 0;
+    setLivePausedNote(false);
+    setLiveMode(true);
+    // If Anbu is still answering or speaking, listening starts when she finishes.
+    if (!pendingRef.current && !playerRef.current?.busy) scheduleListen(300);
+  };
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.hidden) {
+        if (liveRef.current) {
+          awaySince.current = Date.now();
+          pauseLive();
+        }
+      } else {
+        resumeRef.current();
+      }
     };
-    document.addEventListener('visibilitychange', onHide);
-    return () => document.removeEventListener('visibilitychange', onHide);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
   }, []);
 
   useEffect(
@@ -334,6 +369,7 @@ export default function ConversationPage() {
       liveRef.current = false;
       playerRef.current?.stop();
       recognizer.current?.abort();
+      void keepScreenOn(false);
     },
     [],
   );

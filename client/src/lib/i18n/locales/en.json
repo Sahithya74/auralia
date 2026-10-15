@@ -353,7 +353,11 @@
     "passwordNote": "To change your password, sign out and choose “Forgot your password?”.",
     "advancedTitle": "Advanced",
     "showTiming": "Show response timing",
-    "showTimingHint": "Shows how long each reply took, measured on this device."
+    "showTimingHint": "Shows how long each reply took, measured on this device.",
+    "voiceGender": "Anbu's voice",
+    "voiceGenderHint": "Used for Anbu's natural voice and, where available, this device's own voice.",
+    "voiceFemale": "Female",
+    "voiceMale": "Male"
   },
   "privacy": {
     "title": "Peace & Privacy",

@@ -1,3 +1,4 @@
+export type VoiceGender = 'FEMALE' | 'MALE';
 export type MemoryMode = 'NONE' | 'SESSION' | 'PERSONAL';
 export type InteractionMode = 'VOICE' | 'TEXT' | 'BOTH';
 export type ResponseStyle = 'LISTEN' | 'SOLUTIONS' | 'BALANCED';
@@ -12,6 +13,8 @@ export interface Preferences {
   codeMixing: boolean;
   voiceOutputEnabled: boolean;
   voiceRate: number;
+  /** Anbu's voice: female unless she chooses male. */
+  voiceGender: VoiceGender;
   voiceInputReview: boolean;
   captionsEnabled: boolean;
   reducedMotion: boolean;

@@ -1,3 +1,5 @@
+import type { VoiceGender } from '../api/types';
+
 // What this browser can actually do for each language. Support for Tamil,
 // Malayalam, Kannada and Telugu varies a lot by browser and device, so the app
 // detects it instead of assuming, and falls back to text with a clear message.
@@ -52,20 +54,35 @@ export function loadVoices(timeoutMs = 2000): Promise<SpeechSynthesisVoice[]> {
 
 /** Neural voices (Edge "Online (Natural)", Google, Apple enhanced) sound far more human than older system voices. */
 const NATURAL_VOICE = /natural|neural|online|google|enhanced|premium|siri/i;
-/** Anbu speaks with a woman's voice where the device offers one. */
-const FEMALE_VOICE =
-  /female|woman|neerja|swara|pallavi|sobhana|sapna|shruti|heera|kalpana|aditi|lekha|veena|raveena|kajal|vani|meera/i;
+/**
+ * Built-in neural voices (Edge "Online (Natural)", Apple enhanced) sound human, start
+ * instantly and have no daily limit, so they are used before the server's voice.
+ */
+export function isNeuralVoice(voice: SpeechSynthesisVoice | null | undefined): boolean {
+  return Boolean(voice && /natural|neural|enhanced|premium/i.test(voice.name));
+}
 
-export function pickVoice(voices: SpeechSynthesisVoice[], speechTag: string): SpeechSynthesisVoice | null {
+/** Voices known by name to be a woman's or a man's (Windows, Edge, Google, Apple and Android names). */
+const FEMALE_VOICE =
+  /female|woman|zira|hazel|susan|heera|kalpana|neerja|swara|pallavi|sobhana|sapna|shruti|aditi|lekha|veena|raveena|kajal|vani|meera|ananya|aarohi|kavya|google us english|google हिन्दी/i;
+const MALE_VOICE = /male|man|david|mark|george|ravi|hemant|valluvar|prabhat|madhur|midhun|gagan|mohan|kunal|aarav|rishi|guy|ryan/i;
+
+/**
+ * The most natural voice of the chosen gender for the language. A voice known to
+ * be the other gender is never used; one whose gender is unknown can be.
+ */
+export function pickVoice(voices: SpeechSynthesisVoice[], speechTag: string, gender: VoiceGender = 'FEMALE'): SpeechSynthesisVoice | null {
   const tag = speechTag.toLowerCase();
   const base = tag.split('-')[0]!;
   const norm = (v: SpeechSynthesisVoice) => v.lang.toLowerCase().replace('_', '-');
   const score = (v: SpeechSynthesisVoice) => {
     const lang = norm(v);
     if (lang !== tag && lang.split('-')[0] !== base) return -1;
-    return (
-      (lang === tag ? 8 : 0) + (NATURAL_VOICE.test(v.name) ? 4 : 0) + (FEMALE_VOICE.test(v.name) ? 2 : 0) + (v.localService ? 1 : 0)
-    );
+    const female = FEMALE_VOICE.test(v.name);
+    const male = !female && MALE_VOICE.test(v.name);
+    if ((gender === 'FEMALE' && male) || (gender === 'MALE' && female)) return -1;
+    const chosen = gender === 'FEMALE' ? female : male;
+    return (chosen ? 16 : 0) + (lang === tag ? 8 : 0) + (NATURAL_VOICE.test(v.name) ? 4 : 0) + (v.localService ? 1 : 0);
   };
   let best: SpeechSynthesisVoice | null = null;
   let bestScore = -1;
@@ -88,13 +105,13 @@ export interface VoiceSupport {
   voice: SpeechSynthesisVoice | null;
 }
 
-export async function detectVoiceSupport(speechTag: string): Promise<VoiceSupport> {
+export async function detectVoiceSupport(speechTag: string, gender: VoiceGender = 'FEMALE'): Promise<VoiceSupport> {
   const recognition: RecognitionSupport = !isRecognitionAvailable()
     ? 'no-api'
     : wasRecognitionRejected(speechTag)
       ? 'language-rejected'
       : 'available';
   if (!isSynthesisAvailable()) return { recognition, synthesis: 'no-api', voice: null };
-  const voice = pickVoice(await loadVoices(), speechTag);
+  const voice = pickVoice(await loadVoices(), speechTag, gender);
   return { recognition, synthesis: voice ? 'available' : 'no-voice', voice };
 }
