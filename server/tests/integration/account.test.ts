@@ -26,7 +26,7 @@ describeDb('settings, export and account deletion', () => {
     await request(app)
       .patch('/api/users/me/preferences')
       .set(bearer(user.token))
-      .send({ responseStyle: 'LISTEN', voiceRate: 0.9, textSize: 'lg' })
+      .send({ responseStyle: 'LISTEN', voiceRate: 0.9, voiceGender: 'MALE', textSize: 'lg' })
       .expect(200);
     const res = await request(app)
       .patch('/api/users/me')
@@ -36,7 +36,7 @@ describeDb('settings, export and account deletion', () => {
     expect(res.body.user).toMatchObject({
       interactionMode: 'VOICE',
       onboardingCompleted: true,
-      preferences: { responseStyle: 'LISTEN', voiceRate: 0.9, textSize: 'lg' },
+      preferences: { responseStyle: 'LISTEN', voiceRate: 0.9, voiceGender: 'MALE', textSize: 'lg' },
     });
     // History can only be changed through privacy settings.
     await request(app).patch('/api/users/me/preferences').set(bearer(user.token)).send({ historyEnabled: true }).expect(400);

@@ -27,6 +27,11 @@ enum InteractionMode {
   BOTH
 }
 
+enum VoiceGender {
+  FEMALE
+  MALE
+}
+
 enum ResponseStyle {
   LISTEN
   SOLUTIONS
@@ -81,6 +86,7 @@ model UserPreferences {
   codeMixing          Boolean       @default(true)
   voiceOutputEnabled  Boolean       @default(true)
   voiceRate           Float         @default(1.0)
+  voiceGender         VoiceGender   @default(FEMALE)
   voiceInputReview    Boolean       @default(false)
   captionsEnabled     Boolean       @default(true)
   reducedMotion       Boolean       @default(false)

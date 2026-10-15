@@ -22,6 +22,7 @@ const updatePreferencesSchema = z
     codeMixing: z.boolean().optional(),
     voiceOutputEnabled: z.boolean().optional(),
     voiceRate: z.number().min(0.5).max(1.5).optional(),
+    voiceGender: z.enum(['FEMALE', 'MALE']).optional(),
     voiceInputReview: z.boolean().optional(),
     captionsEnabled: z.boolean().optional(),
     reducedMotion: z.boolean().optional(),
