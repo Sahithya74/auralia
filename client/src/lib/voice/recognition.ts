@@ -73,17 +73,33 @@ export function startRecognition(
   let speechEndedAt: number | null = null;
   let errored = false;
   let silenceTimer: ReturnType<typeof setTimeout> | undefined;
+  /** For some languages (e.g. Tamil) words arrive late; the browser hearing a voice counts too. */
+  let heardSpeech = false;
   const quietTimer = options.noSpeechMs
     ? setTimeout(() => {
-        if (finalText || interimText || errored) return;
+        if (finalText || interimText || heardSpeech || errored) return;
         errored = true;
         callbacks.onError('no-speech');
         recognition.abort();
       }, options.noSpeechMs)
     : undefined;
+  const endTurnAfterSilence = () => {
+    if (!patient) return;
+    clearTimeout(silenceTimer);
+    silenceTimer = setTimeout(() => {
+      speechEndedAt ??= performance.now();
+      recognition.stop();
+    }, options.endSilenceMs);
+  };
 
+  recognition.onspeechstart = () => {
+    heardSpeech = true;
+    clearTimeout(silenceTimer);
+  };
   recognition.onspeechend = () => {
     speechEndedAt = performance.now();
+    // Ends the turn even when no words have been reported yet.
+    endTurnAfterSilence();
   };
   recognition.onresult = (event) => {
     // Rebuilt from every result each time, so nothing is counted twice.
@@ -103,13 +119,7 @@ export function startRecognition(
     finalText = final;
     interimText = interim;
     callbacks.onInterim((finalText + ' ' + interimText).trim());
-    if (patient && (finalText || interimText).trim()) {
-      clearTimeout(silenceTimer);
-      silenceTimer = setTimeout(() => {
-        speechEndedAt ??= performance.now();
-        recognition.stop();
-      }, options.endSilenceMs);
-    }
+    if ((finalText || interimText).trim()) endTurnAfterSilence();
   };
   recognition.onerror = (event) => {
     errored = true;

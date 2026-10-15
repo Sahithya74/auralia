@@ -29,6 +29,7 @@ interface SpeechRecognitionLike extends EventTarget {
   onresult: ((event: SpeechRecognitionEventLike) => void) | null;
   onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
   onend: (() => void) | null;
+  onspeechstart: (() => void) | null;
   onspeechend: (() => void) | null;
   onstart: (() => void) | null;
   start(): void;
